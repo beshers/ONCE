@@ -79,11 +79,6 @@ type IncomingCall = {
   offer: RTCSessionDescriptionInit;
 };
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-};
-
 function parseMeta(raw?: string | null): EventMeta | null {
   if (!raw) return null;
   try {
@@ -136,8 +131,6 @@ export default function ChatPage() {
   const [pollOptions, setPollOptions] = useState("Ship now\nReview once more\nSplit tasks");
   const [reaction, setReaction] = useState("++1");
   const [actionError, setActionError] = useState<string | null>(null);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
   const [callState, setCallState] = useState<
     "idle" | "outgoing" | "incoming" | "connecting" | "connected"
   >("idle");
@@ -476,32 +469,6 @@ export default function ChatPage() {
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     setBrowserNotificationsEnabled(Notification.permission === "granted");
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    setIsStandaloneApp(standalone);
-
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-    };
-    const handleAppInstalled = () => {
-      setInstallPrompt(null);
-      setIsStandaloneApp(true);
-      setActionError("OCNE is installed on this device.");
-    };
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    window.addEventListener("appinstalled", handleAppInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-      window.removeEventListener("appinstalled", handleAppInstalled);
-    };
   }, []);
 
   useEffect(() => {
@@ -914,27 +881,6 @@ export default function ChatPage() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Picture-in-picture could not be started.");
     }
-  }
-
-  async function handleInstallApp() {
-    if (isStandaloneApp) {
-      setActionError("OCNE is already installed on this device.");
-      return;
-    }
-
-    if (!installPrompt) {
-      setActionError("To install OCNE, open your browser menu and choose Add to Home screen.");
-      return;
-    }
-
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
-    setInstallPrompt(null);
-    setActionError(
-      choice.outcome === "accepted"
-        ? "OCNE is installing on this device."
-        : "Install cancelled. You can install OCNE later from the browser menu.",
-    );
   }
 
   function applyBandwidthMode(mode: string) {
@@ -1502,17 +1448,6 @@ export default function ChatPage() {
               Live
             </Badge>
           </div>
-          {!isStandaloneApp && (
-            <Button
-              type="button"
-              variant="ghost"
-              className="mt-4 h-11 w-full rounded-full border border-cyan-500/20 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15"
-              onClick={() => void handleInstallApp()}
-            >
-              <MonitorUp className="mr-2 h-4 w-4" />
-              Install OCNE
-            </Button>
-          )}
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-2xl border border-white/10 bg-[#16181c] px-2 py-2">
               <div className="text-base font-semibold text-white">{(rooms || []).length + 1}</div>

@@ -29,6 +29,7 @@ import BugReportPage from "./pages/BugReportPage"
 import EnvVariablesPage from "./pages/EnvVariablesPage"
 import ActivityHeatmapPage from "./pages/ActivityHeatmapPage"
 import ThemeSettingsPage from "./pages/ThemeSettingsPage"
+import PwaInstallButton from "./components/PwaInstallButton"
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth({ redirectOnUnauthenticated: true })
@@ -48,36 +49,39 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/" element={<AuthWrapper><Dashboard /></AuthWrapper>} />
-      <Route path="/projects" element={<AuthWrapper><ProjectsPage /></AuthWrapper>} />
-      <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
-      <Route path="/editor" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
-      <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
-      <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
-      <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
-      <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />
-      <Route path="/friends" element={<AuthWrapper><FriendsPage /></AuthWrapper>} />
-      <Route path="/notifications" element={<AuthWrapper><NotificationsPage /></AuthWrapper>} />
-      <Route path="/settings" element={<AuthWrapper><SettingsPage /></AuthWrapper>} />
-      <Route path="/leaderboard" element={<AuthWrapper><LeaderboardPage /></AuthWrapper>} />
-      <Route path="/playground" element={<AuthWrapper><PlaygroundPage /></AuthWrapper>} />
-      <Route path="/whiteboard" element={<AuthWrapper><WhiteboardPage /></AuthWrapper>} />
-      <Route path="/hackathons" element={<AuthWrapper><HackathonPage /></AuthWrapper>} />
-      <Route path="/snapshots" element={<AuthWrapper><SnapshotsPage /></AuthWrapper>} />
-      <Route path="/bookmarks" element={<AuthWrapper><BookmarksPage /></AuthWrapper>} />
-      <Route path="/organizations" element={<AuthWrapper><OrganizationPage /></AuthWrapper>} />
-      <Route path="/integrations" element={<AuthWrapper><IntegrationsPage /></AuthWrapper>} />
-      <Route path="/documentation" element={<AuthWrapper><DocumentationPage /></AuthWrapper>} />
-      <Route path="/stream" element={<AuthWrapper><StreamPage /></AuthWrapper>} />
-      <Route path="/dependencies" element={<AuthWrapper><DependencyPage /></AuthWrapper>} />
-      <Route path="/deployments" element={<AuthWrapper><DeploymentPage /></AuthWrapper>} />
-      <Route path="/bugs" element={<AuthWrapper><BugReportPage /></AuthWrapper>} />
-      <Route path="/env-vars" element={<AuthWrapper><EnvVariablesPage /></AuthWrapper>} />
-      <Route path="/activity" element={<AuthWrapper><ActivityHeatmapPage /></AuthWrapper>} />
-      <Route path="/themes" element={<AuthWrapper><ThemeSettingsPage /></AuthWrapper>} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <>
+      <PwaInstallButton />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<AuthWrapper><Dashboard /></AuthWrapper>} />
+        <Route path="/projects" element={<AuthWrapper><ProjectsPage /></AuthWrapper>} />
+        <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
+        <Route path="/editor" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
+        <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
+        <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
+        <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
+        <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />
+        <Route path="/friends" element={<AuthWrapper><FriendsPage /></AuthWrapper>} />
+        <Route path="/notifications" element={<AuthWrapper><NotificationsPage /></AuthWrapper>} />
+        <Route path="/settings" element={<AuthWrapper><SettingsPage /></AuthWrapper>} />
+        <Route path="/leaderboard" element={<AuthWrapper><LeaderboardPage /></AuthWrapper>} />
+        <Route path="/playground" element={<AuthWrapper><PlaygroundPage /></AuthWrapper>} />
+        <Route path="/whiteboard" element={<AuthWrapper><WhiteboardPage /></AuthWrapper>} />
+        <Route path="/hackathons" element={<AuthWrapper><HackathonPage /></AuthWrapper>} />
+        <Route path="/snapshots" element={<AuthWrapper><SnapshotsPage /></AuthWrapper>} />
+        <Route path="/bookmarks" element={<AuthWrapper><BookmarksPage /></AuthWrapper>} />
+        <Route path="/organizations" element={<AuthWrapper><OrganizationPage /></AuthWrapper>} />
+        <Route path="/integrations" element={<AuthWrapper><IntegrationsPage /></AuthWrapper>} />
+        <Route path="/documentation" element={<AuthWrapper><DocumentationPage /></AuthWrapper>} />
+        <Route path="/stream" element={<AuthWrapper><StreamPage /></AuthWrapper>} />
+        <Route path="/dependencies" element={<AuthWrapper><DependencyPage /></AuthWrapper>} />
+        <Route path="/deployments" element={<AuthWrapper><DeploymentPage /></AuthWrapper>} />
+        <Route path="/bugs" element={<AuthWrapper><BugReportPage /></AuthWrapper>} />
+        <Route path="/env-vars" element={<AuthWrapper><EnvVariablesPage /></AuthWrapper>} />
+        <Route path="/activity" element={<AuthWrapper><ActivityHeatmapPage /></AuthWrapper>} />
+        <Route path="/themes" element={<AuthWrapper><ThemeSettingsPage /></AuthWrapper>} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
   )
 }
