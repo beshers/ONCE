@@ -6,9 +6,9 @@ import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 
 export const trpc = createTRPCReact<AppRouter>();
+export const enableWebSockets = import.meta.env.VITE_ENABLE_WS === "true";
 
 const queryClient = new QueryClient();
-const enableWebSockets = import.meta.env.VITE_ENABLE_WS !== "false";
 const wsClient = createWSClient({
   url:
     import.meta.env.VITE_WS_URL ||

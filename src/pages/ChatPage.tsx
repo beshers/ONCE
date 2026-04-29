@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc";
+import { enableWebSockets, trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -242,7 +242,7 @@ export default function ChatPage() {
   trpc.chat.onMessage.useSubscription(
     directRecipientId ? { receiverId: directRecipientId } : { roomId: activeRoom },
     {
-      enabled: Boolean(user?.id),
+      enabled: enableWebSockets && Boolean(user?.id),
       onData: () => {
         void utils.chat.messages.invalidate();
         void utils.chat.directThreads.invalidate();
@@ -258,7 +258,7 @@ export default function ChatPage() {
   trpc.chat.onTyping.useSubscription(
     directRecipientId ? { receiverId: directRecipientId } : { roomId: activeRoom },
     {
-      enabled: Boolean(user?.id),
+      enabled: enableWebSockets && Boolean(user?.id),
       onData: (event) => {
         if (String(event.userId) === String(user?.id)) {
           return;
@@ -281,14 +281,14 @@ export default function ChatPage() {
   );
 
   trpc.chat.onPresence.useSubscription(undefined, {
-    enabled: Boolean(user?.id),
+    enabled: enableWebSockets && Boolean(user?.id),
     onData: () => {
       void utils.user.onlineUsers.invalidate();
     },
   });
 
   trpc.chat.onRoomCreated.useSubscription(undefined, {
-    enabled: Boolean(user?.id),
+    enabled: enableWebSockets && Boolean(user?.id),
     onData: () => {
       void utils.chat.rooms.invalidate();
     },
