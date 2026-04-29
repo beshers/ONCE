@@ -10,14 +10,14 @@ export function serveStaticFiles(app: App) {
   const distPath = path.resolve(import.meta.dirname, "../dist/public");
   const indexPath = path.resolve(distPath, "index.html");
 
-  app.use("/assets/*", serveStatic({ root: "./dist/public" }));
-  app.use("/manifest.json", serveStatic({ root: "./dist/public" }));
-  app.use("/sw.js", serveStatic({ root: "./dist/public" }));
-  app.get("/", serveStatic({ path: "./dist/public/index.html" }));
+  app.get("/assets/*", serveStatic({ root: "./dist/public" }));
+  app.get("/manifest.json", serveStatic({ path: "./dist/public/manifest.json" }));
+  app.get("/sw.js", serveStatic({ path: "./dist/public/sw.js" }));
+  app.get("/favicon.ico", serveStatic({ path: "./dist/public/favicon.ico" }));
 
   app.get("*", (c) => {
-    const accept = c.req.header("accept") ?? "";
-    if (!accept.includes("text/html")) {
+    const pathname = new URL(c.req.url).pathname;
+    if (pathname.startsWith("/api/")) {
       return c.json({ error: "Not Found" }, 404);
     }
 
