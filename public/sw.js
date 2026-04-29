@@ -1,5 +1,5 @@
 // Service Worker for OCNE PWA Offline Support
-const CACHE_NAME = 'ocne-v2';
+const CACHE_NAME = 'ocne-v3';
 const OFFLINE_URLS = [
   '/',
   '/chat',
@@ -48,6 +48,26 @@ self.addEventListener('fetch', (event) => {
           { headers: { 'Content-Type': 'application/json' } }
         );
       })
+    );
+    return;
+  }
+
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse.ok) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('/', responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cachedHome = await caches.match('/');
+          return cachedHome || caches.match('/index.html');
+        })
     );
     return;
   }
