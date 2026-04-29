@@ -1,0 +1,43 @@
+{
+  "name": "CodeCraft IDE",
+  "short_name": "CodeCraft",
+  "description": "AI-Powered Code Editor with Offline Support",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#00d4ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["developer", "productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "New Project",
+      "short_name": "New",
+      "description": "Create a new coding project",
+      "url": "/projects?new=true"
+    },
+    {
+      "name": "Open Editor",
+      "short_name": "Editor",
+      "description": "Open code editor",
+      "url": "/editor"
+    },
+    {
+      "name": "View Terminal",
+      "short_name": "Terminal",
+      "description": "Open terminal",
+      "url": "/terminal"
+    }
+  ]
+}

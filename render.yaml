@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ocne
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_WS
+        value: "false"
+      - key: VITE_ENABLE_WS
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
