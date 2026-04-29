@@ -1,5 +1,6 @@
 import mysql from "mysql2/promise";
 import { env } from "../lib/env";
+import { getMysqlConnectionOptions } from "./mysql-config";
 
 let schemaReady: Promise<void> | undefined;
 
@@ -46,12 +47,7 @@ async function ensureUsersSchema() {
     return;
   }
 
-  const databaseUrl = new URL(env.databaseUrl);
-  if (databaseUrl.hostname === "localhost") {
-    databaseUrl.hostname = "127.0.0.1";
-  }
-
-  const connection = await mysql.createConnection(databaseUrl.toString());
+  const connection = await mysql.createConnection(getMysqlConnectionOptions(env.databaseUrl));
   try {
     await connection.query(`
       CREATE TABLE IF NOT EXISTS users (

@@ -1,27 +1,19 @@
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { env } from "../lib/env";
 import * as schema from "@db/schema";
 import * as relations from "@db/relations";
+import { getMysqlConnectionOptions } from "./mysql-config";
 
 const fullSchema = { ...schema, ...relations };
 
 let instance: ReturnType<typeof drizzle<typeof fullSchema>>;
-
-function getDatabaseUrl() {
-  if (!env.databaseUrl) {
-    return env.databaseUrl;
-  }
-
-  const url = new URL(env.databaseUrl);
-  if (url.hostname === "localhost") {
-    url.hostname = "127.0.0.1";
-  }
-  return url.toString();
-}
+let pool: mysql.Pool;
 
 export function getDb() {
   if (!instance) {
-    instance = drizzle(getDatabaseUrl(), { schema: fullSchema, mode: "default" });
+    pool = mysql.createPool(getMysqlConnectionOptions(env.databaseUrl));
+    instance = drizzle(pool, { schema: fullSchema, mode: "default" });
   }
   return instance;
 }
