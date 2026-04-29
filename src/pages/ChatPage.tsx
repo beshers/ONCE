@@ -79,6 +79,11 @@ type IncomingCall = {
   offer: RTCSessionDescriptionInit;
 };
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 function parseMeta(raw?: string | null): EventMeta | null {
   if (!raw) return null;
   try {
@@ -131,6 +136,8 @@ export default function ChatPage() {
   const [pollOptions, setPollOptions] = useState("Ship now\nReview once more\nSplit tasks");
   const [reaction, setReaction] = useState("++1");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
   const [callState, setCallState] = useState<
     "idle" | "outgoing" | "incoming" | "connecting" | "connected"
   >("idle");
@@ -469,6 +476,32 @@ export default function ChatPage() {
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     setBrowserNotificationsEnabled(Notification.permission === "granted");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    setIsStandaloneApp(standalone);
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const handleAppInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandaloneApp(true);
+      setActionError("OCNE is installed on this device.");
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -881,6 +914,27 @@ export default function ChatPage() {
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Picture-in-picture could not be started.");
     }
+  }
+
+  async function handleInstallApp() {
+    if (isStandaloneApp) {
+      setActionError("OCNE is already installed on this device.");
+      return;
+    }
+
+    if (!installPrompt) {
+      setActionError("To install OCNE, open your browser menu and choose Add to Home screen.");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setActionError(
+      choice.outcome === "accepted"
+        ? "OCNE is installing on this device."
+        : "Install cancelled. You can install OCNE later from the browser menu.",
+    );
   }
 
   function applyBandwidthMode(mode: string) {
@@ -1432,8 +1486,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-92px)] max-w-[1500px] bg-black text-slate-100">
-      <Card className="w-80 shrink-0 gap-0 overflow-hidden rounded-none border-y-0 border-l-0 border-r border-white/10 bg-black p-0 shadow-none">
+    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1500px] flex-col gap-3 bg-black p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
+      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-black p-0 shadow-none lg:h-full lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
         <div className="border-b border-white/10 px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -1448,6 +1502,17 @@ export default function ChatPage() {
               Live
             </Badge>
           </div>
+          {!isStandaloneApp && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="mt-4 h-11 w-full rounded-full border border-cyan-500/20 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15"
+              onClick={() => void handleInstallApp()}
+            >
+              <MonitorUp className="mr-2 h-4 w-4" />
+              Install OCNE
+            </Button>
+          )}
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-2xl border border-white/10 bg-[#16181c] px-2 py-2">
               <div className="text-base font-semibold text-white">{(rooms || []).length + 1}</div>
@@ -1464,7 +1529,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <ScrollArea className="h-[calc(100%-139px)]">
+        <ScrollArea className="max-h-[460px] lg:h-[calc(100%-196px)] lg:max-h-none">
           <div className="space-y-5 p-3">
             <div className="space-y-3 rounded-3xl border border-white/10 bg-[#16181c] p-3">
               <div className="flex items-center justify-between">
@@ -1769,12 +1834,12 @@ export default function ChatPage() {
         </ScrollArea>
       </Card>
 
-      <div className="min-w-0 flex-1">
-        <Card className="min-h-full gap-0 overflow-hidden rounded-none border-y-0 border-r-0 border-white/10 bg-black p-0 shadow-none">
-          <div className="sticky top-0 z-10 border-b border-white/10 bg-black/90 px-5 py-4 backdrop-blur">
+      <div className="min-w-0 flex-1 lg:h-full">
+        <Card className="min-h-full gap-0 overflow-hidden rounded-3xl border border-white/10 bg-black p-0 shadow-none lg:h-full lg:rounded-none lg:border-y-0 lg:border-r-0">
+          <div className="sticky top-0 z-10 border-b border-white/10 bg-black/90 px-3 py-3 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
-                <Avatar className="h-12 w-12 shrink-0 border border-white/10">
+                <Avatar className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12">
                   <AvatarImage src={currentDirectUser?.avatar || activeRoomCreator?.avatar || undefined} />
                   <AvatarFallback className="bg-[#1d9bf0] text-white">
                     {(roomName || "R").charAt(0)}
@@ -1782,7 +1847,7 @@ export default function ChatPage() {
                 </Avatar>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-xl font-semibold text-white">{roomName}</h2>
+                    <h2 className="truncate text-lg font-semibold text-white sm:text-xl">{roomName}</h2>
                     <Badge className={`rounded-full border-0 ${directRecipientId ? "bg-[#1d9bf0]/15 text-[#8ecdf8]" : "bg-emerald-500/15 text-emerald-300"}`}>
                       {directRecipientId ? "Direct message" : "Always-on"}
                     </Badge>
@@ -1813,7 +1878,7 @@ export default function ChatPage() {
               </div>
 
               {!directRecipientId ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap">
                   <Button size="sm" className="rounded-full bg-white text-black hover:bg-slate-200" onClick={() => handleStartCall("voice")}>
                     <Phone className="mr-2 h-4 w-4" />
                     {roomMediaMode === "voice" ? "Voice On" : "Voice"}
@@ -1842,7 +1907,7 @@ export default function ChatPage() {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap">
                   <Button size="sm" className="rounded-full bg-white text-black hover:bg-slate-200" onClick={() => handleStartCall("voice")} disabled={!canCallCurrentDirectUser}>
                     <Phone className="mr-2 h-4 w-4" />
                     Call this person
@@ -1876,7 +1941,7 @@ export default function ChatPage() {
             </div>
 
             {!directRecipientId && (
-              <div className="mt-4 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6">
                 <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{recording ? "Recording on" : "Recording off"}</Badge>
                 <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{noiseCancel ? "Noise cancellation" : "Raw audio"}</Badge>
                 <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{backgroundBlur ? "Background blur" : "Clear background"}</Badge>
@@ -1892,10 +1957,10 @@ export default function ChatPage() {
             )}
           </div>
 
-          <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_390px]">
-            <div className="space-y-4 border-l border-white/10 bg-black p-4">
-              <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="border-b border-white/10 bg-black p-4">
+          <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_390px]">
+            <div className="space-y-4 border-t border-white/10 bg-black p-3 sm:p-4 lg:border-l 2xl:border-t-0">
+              <div className="grid gap-4 2xl:grid-cols-[0.95fr_1.05fr]">
+                <div className="rounded-3xl border border-white/10 bg-black p-3 sm:p-4 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Meeting controls</div>
@@ -2020,7 +2085,7 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                <div className="border-b border-white/10 bg-black p-4">
+                <div className="rounded-3xl border border-white/10 bg-black p-3 sm:p-4 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Live transcript</div>
@@ -2050,7 +2115,7 @@ export default function ChatPage() {
                       ))}
                     </div>
                   </ScrollArea>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 grid gap-2 sm:flex">
                     <Button onClick={handlePublishMinutes} className="bg-cyan-500 text-slate-950">
                       <Sparkles className="mr-2 h-4 w-4" />
                       Publish minutes
@@ -2070,7 +2135,7 @@ export default function ChatPage() {
               </div>
 
               <div className="bg-black">
-                <div className="flex items-center justify-between border-y border-white/10 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-y border-white/10 px-3 py-3 sm:px-4">
                   <div>
                     <div className="text-sm font-semibold text-white">Room stream</div>
                     <div className="text-[11px] text-slate-500">
@@ -2081,7 +2146,7 @@ export default function ChatPage() {
                     {participants.length} active
                   </Badge>
                 </div>
-                <ScrollArea className="h-[520px] px-4 py-4">
+                <ScrollArea className="h-[55vh] min-h-[360px] px-3 py-4 sm:px-4 lg:h-[520px]">
                   <div className="space-y-4">
                     {messageSearch.trim().length > 1 && (
                       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] px-4 py-3 text-xs text-cyan-100">
@@ -2109,7 +2174,7 @@ export default function ChatPage() {
                               {(entry.sender?.name || entry.sender?.username || "U").charAt(0)}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="max-w-[82%]">
+                          <div className="max-w-[min(82%,42rem)]">
                             <div className={`mb-1 flex items-center gap-2 text-[11px] text-slate-500 ${isMe ? "justify-end" : ""}`}>
                               {!isMe && <span>{entry.sender?.name || entry.sender?.username || "User"}</span>}
                               {isSpeaker && <Badge className="border-0 bg-emerald-500/15 text-[10px] text-emerald-300">Speaker</Badge>}
@@ -2130,7 +2195,7 @@ export default function ChatPage() {
                     <div ref={bottomRef} />
                   </div>
                 </ScrollArea>
-                <div className="border-t border-white/10 bg-black px-4 py-4">
+                <div className="border-t border-white/10 bg-black px-3 py-4 sm:px-4">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Input
                       value={messageSearch}
@@ -2159,7 +2224,7 @@ export default function ChatPage() {
                       className="min-h-[96px] resize-none border-0 bg-transparent text-white placeholder:text-slate-600 focus-visible:ring-0"
                     />
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="mt-3 grid gap-3 sm:flex sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {["++1", "ship it", "need review"].map((emoji) => (
                         <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-300 hover:bg-[#16181c]" onClick={() => setReaction(emoji)}>
@@ -2176,7 +2241,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 border-t border-white/10 p-3 sm:p-4 2xl:border-l 2xl:border-t-0">
               {!directRecipientId && activeRoom !== "global" && (
                 <Card className="rounded-3xl border-white/10 bg-[#16181c] p-4 shadow-none">
                   <div className="flex items-center justify-between">

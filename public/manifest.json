@@ -1,43 +1,52 @@
 {
-  "name": "CodeCraft IDE",
-  "short_name": "CodeCraft",
-  "description": "AI-Powered Code Editor with Offline Support",
-  "start_url": "/",
+  "name": "OCNE",
+  "short_name": "OCNE",
+  "description": "OCNE chat, rooms, calls, and developer collaboration.",
+  "start_url": "/chat",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#00d4ff",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ],
-  "categories": ["developer", "productivity", "utilities"],
+  "categories": ["developer", "productivity", "social"],
   "shortcuts": [
     {
-      "name": "New Project",
-      "short_name": "New",
-      "description": "Create a new coding project",
-      "url": "/projects?new=true"
+      "name": "Open Chat",
+      "short_name": "Chat",
+      "description": "Open OCNE chat",
+      "url": "/chat"
+    },
+    {
+      "name": "Open Friends",
+      "short_name": "Friends",
+      "description": "Open friends and requests",
+      "url": "/friends"
     },
     {
       "name": "Open Editor",
       "short_name": "Editor",
       "description": "Open code editor",
       "url": "/editor"
-    },
-    {
-      "name": "View Terminal",
-      "short_name": "Terminal",
-      "description": "Open terminal",
-      "url": "/terminal"
     }
   ]
 }

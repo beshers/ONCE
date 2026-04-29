@@ -1,9 +1,13 @@
-// Service Worker for PWA Offline Support
-const CACHE_NAME = 'codecraft-v1';
+// Service Worker for OCNE PWA Offline Support
+const CACHE_NAME = 'ocne-v2';
 const OFFLINE_URLS = [
   '/',
+  '/chat',
   '/index.html',
   '/manifest.json',
+  '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
 ];
 
 // Install event - cache core resources
@@ -126,7 +130,7 @@ async function syncSnippets() {
 
 async function openDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('codecraft-offline', 1);
+    const request = indexedDB.open('ocne-offline', 1);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve({
       getAll: (store) => new Promise((resolve, reject) => {
@@ -173,4 +177,5 @@ self.addEventListener('push', (event) => {
       { action: 'close', title: 'Close' },
     ],
   };
-  event.waitUntil(self.registration.showNotification(data.title || 'CodeCraft', options)));
+  event.waitUntil(self.registration.showNotification(data.title || 'OCNE', options));
+});
