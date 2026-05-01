@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, HardDrive, Plug, Upload } from "lucide-react";
+import { Download, FolderDown, FolderUp, HardDrive, Play, Plug, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,10 +17,30 @@ type AgentHealth = {
 };
 
 type DeviceEditorBridgeProps = {
+  projectName?: string;
   fileName?: string;
   content: string;
+  projectFiles?: BridgeFile[];
   onImport: (content: string) => void;
+  onImportProject?: (items: ImportedProjectItem[]) => Promise<void> | void;
   disabled?: boolean;
+};
+
+export type BridgeFile = {
+  id: number;
+  parentId?: number | null;
+  name: string;
+  type: "file" | "folder";
+  content?: string | null;
+  language?: string | null;
+};
+
+export type ImportedProjectItem = {
+  path: string;
+  name: string;
+  type: "file" | "folder";
+  content?: string;
+  language?: string;
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
@@ -61,15 +81,20 @@ function fromBase64Utf8(value: string) {
 }
 
 export default function DeviceEditorBridge({
+  projectName = "ocne-project",
   fileName = "main.txt",
   content,
+  projectFiles = [],
   onImport,
+  onImportProject,
   disabled = false,
 }: DeviceEditorBridgeProps) {
   const { user } = useAuth({ requireAuth: false });
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem("ocne-agent-endpoint") || DEFAULT_ENDPOINT);
   const [token, setToken] = useState(() => localStorage.getItem("ocne-agent-token") || "");
   const [localPath, setLocalPath] = useState(() => `.\\ocne-live\\${fileName}`);
+  const [localProjectPath, setLocalProjectPath] = useState(() => `.\\ocne-live\\${projectName.replace(/[^a-z0-9._-]+/gi, "-")}`);
+  const [deviceCommand, setDeviceCommand] = useState("npm install");
   const [approval, setApproval] = useState("");
   const [health, setHealth] = useState<AgentHealth | null>(null);
   const [status, setStatus] = useState("Connect the user's device to sync this live file.");
@@ -167,6 +192,79 @@ export default function DeviceEditorBridge({
     }
   }
 
+  function projectPathFor(item: BridgeFile) {
+    const byId = new Map(projectFiles.map((file) => [file.id, file]));
+    const parts = [item.name];
+    let parentId = item.parentId ?? null;
+    const seen = new Set<number>();
+
+    while (parentId) {
+      if (seen.has(parentId)) break;
+      seen.add(parentId);
+      const parent = byId.get(parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      parentId = parent.parentId ?? null;
+    }
+
+    return parts.join("\\");
+  }
+
+  async function saveProjectToDevice() {
+    setIsBusy(true);
+    setStatus("Saving the full OCNE project to the device...");
+    try {
+      const root = escapePowerShellString(localProjectPath.trim());
+      const manifest = projectFiles.map((file) => ({
+        path: projectPathFor(file),
+        type: file.type,
+        content: file.type === "file" ? file.content || "" : "",
+      }));
+      const encoded = toBase64Utf8(JSON.stringify(manifest));
+      const command = `$root='${root}'; New-Item -ItemType Directory -Force -Path $root | Out-Null; $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $items=$json | ConvertFrom-Json; foreach ($item in $items) { $target=Join-Path $root $item.path; if ($item.type -eq 'folder') { New-Item -ItemType Directory -Force -Path $target | Out-Null } else { $dir=Split-Path -Parent $target; if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }; [IO.File]::WriteAllText($target, [string]$item.content, [Text.UTF8Encoding]::new($false)) } }; Write-Output "Saved project to $root"`;
+      await runDeviceCommand(command);
+      setStatus(`Saved ${manifest.length} project items to ${localProjectPath}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not save project to device.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function importProjectFromDevice() {
+    if (!onImportProject) return;
+    setIsBusy(true);
+    setStatus("Reading project folder from device...");
+    try {
+      const root = escapePowerShellString(localProjectPath.trim());
+      const command = `$root='${root}'; if (!(Test-Path -LiteralPath $root)) { throw "Folder not found: $root" }; $rootItem=Get-Item -LiteralPath $root; $items=@(); Get-ChildItem -LiteralPath $root -Recurse -Force | Where-Object { $_.FullName -notmatch '\\\\.git(\\\\|$)' -and $_.FullName -notmatch '\\\\node_modules(\\\\|$)' -and $_.FullName -notmatch '\\\\dist(\\\\|$)' } | Select-Object -First 120 | ForEach-Object { $rel=$_.FullName.Substring($rootItem.FullName.Length).TrimStart('\\'); if ($_.PSIsContainer) { $items += [pscustomobject]@{ path=$rel; name=$_.Name; type='folder'; content=''; language='plaintext' } } elseif ($_.Length -le 262144) { $content=[IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8); $items += [pscustomobject]@{ path=$rel; name=$_.Name; type='file'; content=$content; language='plaintext' } } }; [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($items | ConvertTo-Json -Depth 4 -Compress)))`;
+      const output = await runDeviceCommand(command);
+      const items = JSON.parse(fromBase64Utf8(output)) as ImportedProjectItem[] | ImportedProjectItem;
+      const normalized = Array.isArray(items) ? items : [items];
+      await onImportProject(normalized);
+      setStatus(`Imported ${normalized.length} items from ${localProjectPath} into OCNE.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not import project from device.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function runInProjectFolder() {
+    setIsBusy(true);
+    setStatus("Running command in the local project folder...");
+    try {
+      const root = escapePowerShellString(localProjectPath.trim());
+      const command = `$root='${root}'; if (!(Test-Path -LiteralPath $root)) { New-Item -ItemType Directory -Force -Path $root | Out-Null }; Set-Location -LiteralPath $root; ${deviceCommand}`;
+      const output = await runDeviceCommand(command);
+      setStatus(output.trim() || `Command finished in ${localProjectPath}.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Could not run command on device.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -175,7 +273,7 @@ export default function DeviceEditorBridge({
             <HardDrive className="h-4 w-4 text-emerald-300" /> Device bridge
           </h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Sync the active live-coding file with a path on the user's paired computer.
+            Sync the live editor and full project folder with the user's paired computer.
           </p>
         </div>
         <Badge className={health ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-200"}>
@@ -202,6 +300,12 @@ export default function DeviceEditorBridge({
           className="border-white/10 bg-white/[0.03] font-mono text-white"
           placeholder=".\\ocne-live\\main.ts"
         />
+        <Input
+          value={localProjectPath}
+          onChange={(event) => setLocalProjectPath(event.target.value)}
+          className="border-white/10 bg-white/[0.03] font-mono text-white"
+          placeholder=".\\ocne-live\\my-project"
+        />
         {needsApproval && (
           <Input
             value={approval}
@@ -219,6 +323,25 @@ export default function DeviceEditorBridge({
           </Button>
           <Button onClick={() => void pushToDevice()} disabled={disabled || isBusy || !localPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
             <Upload className="mr-2 h-4 w-4" /> Push
+          </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button onClick={() => void saveProjectToDevice()} disabled={isBusy || projectFiles.length === 0} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
+            <FolderDown className="mr-2 h-4 w-4" /> Save project to device
+          </Button>
+          <Button onClick={() => void importProjectFromDevice()} disabled={isBusy || !onImportProject || !localProjectPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
+            <FolderUp className="mr-2 h-4 w-4" /> Upload folder online
+          </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+          <Input
+            value={deviceCommand}
+            onChange={(event) => setDeviceCommand(event.target.value)}
+            className="border-white/10 bg-white/[0.03] font-mono text-white"
+            placeholder="npm run dev"
+          />
+          <Button onClick={() => void runInProjectFolder()} disabled={isBusy || !deviceCommand.trim()} className="bg-white text-slate-950 hover:bg-slate-200">
+            <Play className="mr-2 h-4 w-4" /> Run on device
           </Button>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-slate-300">{status}</div>

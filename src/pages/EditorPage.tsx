@@ -223,6 +223,60 @@ export default function EditorPage() {
     });
   };
 
+  const languageFromName = (name: string) => {
+    const extension = name.split(".").pop()?.toLowerCase();
+    const map: Record<string, string> = {
+      js: "javascript",
+      jsx: "javascript",
+      ts: "typescript",
+      tsx: "typescript",
+      py: "python",
+      php: "php",
+      java: "java",
+      cs: "csharp",
+      html: "html",
+      css: "css",
+      go: "go",
+      rs: "rust",
+      rb: "ruby",
+      sql: "sql",
+      json: "json",
+      md: "markdown",
+    };
+    return extension ? map[extension] || "plaintext" : "plaintext";
+  };
+
+  const importDeviceProject = async (items: Array<{ path: string; name: string; type: "file" | "folder"; content?: string; language?: string }>) => {
+    const sorted = [...items].sort((a, b) => {
+      const depthA = a.path.split(/[\\/]/).length;
+      const depthB = b.path.split(/[\\/]/).length;
+      if (depthA !== depthB) return depthA - depthB;
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.path.localeCompare(b.path);
+    });
+    const folderIds = new Map<string, number>();
+
+    for (const item of sorted) {
+      const parts = item.path.split(/[\\/]/).filter(Boolean);
+      const parentPath = parts.slice(0, -1).join("/");
+      const parentId = parentPath ? folderIds.get(parentPath) : undefined;
+      const result = await createFile.mutateAsync({
+        projectId: projectId!,
+        parentId,
+        name: item.name || parts.at(-1) || "imported",
+        type: item.type,
+        content: item.type === "file" ? item.content || "" : undefined,
+        language: item.type === "file" ? item.language || languageFromName(item.name) : "plaintext",
+      });
+      if (item.type === "folder") {
+        folderIds.set(parts.join("/"), result.id);
+      }
+    }
+
+    await utils.project.fileList.invalidate({ projectId: projectId! });
+    toast.success(`Imported ${sorted.length} items from device`);
+  };
+
   const handleDeleteProjectItem = (item: NonNullable<typeof files>[number]) => {
     const message = item.type === "folder"
       ? `Delete folder "${item.name}" and all files inside it?`
@@ -588,9 +642,12 @@ export default function EditorPage() {
           </div>
           {project?.localFilesEnabled ? (
             <DeviceEditorBridge
+              projectName={project?.name}
               fileName={activeFile?.name}
               content={code}
+              projectFiles={files || []}
               onImport={setCode}
+              onImportProject={importDeviceProject}
               disabled={!activeFile}
             />
           ) : (
