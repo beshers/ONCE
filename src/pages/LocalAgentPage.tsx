@@ -19,6 +19,13 @@ type AgentHealth = {
   workspace: string;
   approvalMode?: string;
   approvalRequired?: boolean;
+  websiteConnected?: boolean;
+  lastWebsiteSeenAt?: string | null;
+  pairedAccount?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  } | null;
   tokenRequired?: boolean;
   tokenLength?: number;
   identificationRequired?: boolean;
@@ -41,9 +48,9 @@ type RunResult = {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
-const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
+const EXPECTED_DESKTOP_AGENT_VERSION = "0.2.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "BC00313D237522771836B9DC460FA8E9C948F8BD4E230523FCF2C200A4568C25";
+const WINDOWS_AGENT_SHA256 = "E25999089FE326BDF5F1ECE5038A8088D413E9BA25CBF276AC9D00B61A671E02";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -102,6 +109,7 @@ export default function LocalAgentPage() {
   const needsWebsiteApproval = approvalRequired && health?.approvalMode !== "terminal";
   const expectedAgentVersion = health?.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION;
   const versionIsCurrent = health?.version === expectedAgentVersion;
+  const isDesktopAgent = health?.name === "OCNE Desktop Agent";
   const requester = useMemo(() => {
     const name =
       (typeof (user as any)?.fullName === "string" && (user as any).fullName) ||
@@ -137,22 +145,70 @@ export default function LocalAgentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!health || !isDesktopAgent || !tokenValue) return;
+
+    const interval = window.setInterval(() => {
+      void pairDesktopAgent({ quiet: true });
+    }, 30000);
+
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [health?.name, normalizedEndpoint, tokenValue, requester.id, requester.email, requester.name]);
+
+  async function pairDesktopAgent(options?: { quiet?: boolean }) {
+    if (!tokenValue) {
+      if (!options?.quiet) setStatus("Paste the desktop agent pairing token first.");
+      return null;
+    }
+
+    try {
+      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/pair`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-ocne-agent-token": tokenValue,
+          "x-ocne-user-id": requester.id,
+          "x-ocne-user-email": requester.email,
+          "x-ocne-user-name": requester.name,
+        },
+        body: JSON.stringify({ requester }),
+      }));
+      setHealth(data);
+      return data;
+    } catch (error) {
+      if (!options?.quiet) setStatus(explainError(error));
+      return null;
+    }
+  }
+
   async function connect(options?: { remember?: boolean; quiet?: boolean }) {
     setStatus("Connecting to local agent...");
     setResult(null);
     setHealth(null);
     try {
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
+      let connectedData = data;
       setHealth(data);
+      if (data.name === "OCNE Desktop Agent" && data.tokenRequired !== false) {
+        const paired = await pairDesktopAgent({ quiet: true });
+        if (paired) {
+          connectedData = paired;
+        }
+      }
       if (options?.remember !== false) {
         setStayConnected(true);
       }
       setStatus(
-        data.version === (data.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION)
-          ? data.approvalRequired === false
-            ? "Connected. Direct mode is enabled, commands run without APPROVE."
+        connectedData.version === (connectedData.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION)
+          ? connectedData.name === "OCNE Desktop Agent"
+            ? connectedData.websiteConnected
+              ? "Desktop Agent paired. OCNE Website heartbeat is connected."
+              : "Desktop Agent reached. Paste the pairing token to complete the connection."
+            : connectedData.approvalRequired === false
+              ? "Connected. Direct mode is enabled, commands run without APPROVE."
             : "Connected. Type APPROVE in the website before running a command."
-          : `Connected to agent ${data.version}. Restart the agent to use ${data.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION}.`,
+          : `Connected to agent ${connectedData.version}. Restart the agent to use ${connectedData.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION}.`,
       );
     } catch (error) {
       setHealth(null);
@@ -304,6 +360,11 @@ export default function LocalAgentPage() {
             {health && (
               <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
                 <div>Agent: {health.name}</div>
+                {isDesktopAgent && (
+                  <div className={health.websiteConnected ? "text-emerald-300" : "text-amber-200"}>
+                    Website: {health.websiteConnected ? "paired and heartbeat connected" : "waiting for pairing token"}
+                  </div>
+                )}
                 <div className={versionIsCurrent ? "text-emerald-300" : "text-amber-200"}>
                   Version: {health.version} {versionIsCurrent ? "(current)" : `(expected ${expectedAgentVersion})`}
                 </div>
@@ -313,6 +374,12 @@ export default function LocalAgentPage() {
                 <div>Platform: {health.platform} / {health.arch}</div>
                 <div>Approval: {health.approvalRequired === false ? "direct mode, no per-command approval" : health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
                 <div>Token: {health.tokenRequired === false ? "disabled for local testing" : `required${health.tokenLength ? `, ${health.tokenLength} characters` : ""}`}</div>
+                {isDesktopAgent && health.pairedAccount && (
+                  <div>Paired account: {health.pairedAccount.name || "OCNE user"} {health.pairedAccount.email ? `<${health.pairedAccount.email}>` : ""}</div>
+                )}
+                {isDesktopAgent && health.lastWebsiteSeenAt && (
+                  <div>Last heartbeat: {new Date(health.lastWebsiteSeenAt).toLocaleString()}</div>
+                )}
                 <div>
                   Identity: {health.identificationRequired
                     ? `restricted${health.allowedUserEmailConfigured ? " by email" : ""}${health.allowedUserIdConfigured ? " by user id" : ""}`

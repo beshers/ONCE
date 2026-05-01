@@ -1,5 +1,8 @@
 const website = document.getElementById("website");
+const connectionPill = document.getElementById("connectionPill");
 const connectionStatus = document.getElementById("connectionStatus");
+const pairedAccount = document.getElementById("pairedAccount");
+const lastSeen = document.getElementById("lastSeen");
 const localBridge = document.getElementById("localBridge");
 const computer = document.getElementById("computer");
 const version = document.getElementById("version");
@@ -16,6 +19,14 @@ const save = document.getElementById("save");
 function render(status) {
   website.textContent = status.websiteUrl || "https://ocne.onrender.com";
   connectionStatus.textContent = status.connectionStatus || "Ready for OCNE Website";
+  connectionPill.classList.toggle("offline", !status.websiteConnected);
+  const account = status.pairedAccount;
+  pairedAccount.textContent = account?.email || account?.name || account?.id
+    ? `Paired account: ${account.name || "OCNE user"} ${account.email ? `<${account.email}>` : ""}`
+    : "No OCNE account paired yet.";
+  lastSeen.textContent = status.lastWebsiteSeenAt
+    ? `Last website heartbeat: ${new Date(status.lastWebsiteSeenAt).toLocaleString()}`
+    : "Waiting for website heartbeat.";
   localBridge.textContent = status.localBridgeUrl || status.url;
   computer.textContent = `${status.hostname} (${status.platform} / ${status.arch})`;
   version.textContent = status.version;

@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.OCNE_DESKTOP_AGENT_PORT || 48731);
 const OCNE_WEBSITE_URL = process.env.OCNE_WEBSITE_URL || "https://ocne.onrender.com";
@@ -26,6 +26,7 @@ let server;
 let config = loadConfig();
 let isQuitting = false;
 let updateStatus = "Updates have not been checked yet.";
+let lastWebsiteSeenAt = null;
 
 function loadConfig() {
   try {
@@ -46,12 +47,15 @@ function saveConfig() {
 }
 
 function statusPayload() {
+  const websiteConnected = Boolean(lastWebsiteSeenAt && Date.now() - lastWebsiteSeenAt < 45000);
   return {
     ok: true,
     name: "OCNE Desktop Agent",
     version: VERSION,
     websiteUrl: OCNE_WEBSITE_URL,
-    connectionStatus: `Ready for ${OCNE_WEBSITE_URL}`,
+    connectionStatus: websiteConnected ? "Connected to OCNE Website" : `Ready for ${OCNE_WEBSITE_URL}`,
+    websiteConnected,
+    lastWebsiteSeenAt,
     url: `http://${HOST}:${PORT}`,
     localBridgeUrl: `http://${HOST}:${PORT}`,
     port: PORT,
@@ -139,6 +143,15 @@ function requesterFrom(req, body) {
   };
 }
 
+function rememberWebsitePairing(requester) {
+  lastWebsiteSeenAt = new Date().toISOString();
+  if (requester.email || requester.id || requester.name) {
+    config.pairedAccount = requester;
+    saveConfig();
+  }
+  updateWindow();
+}
+
 function resolveShell() {
   if (process.platform === "win32") {
     return {
@@ -194,6 +207,19 @@ function startServer() {
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/pair") {
+        if (!tokenAllowed(req)) {
+          sendJson(res, 401, { ok: false, code: "INVALID_TOKEN", error: "Invalid desktop agent pairing token." });
+          return;
+        }
+
+        const body = await readBody(req);
+        const requester = requesterFrom(req, body);
+        rememberWebsitePairing(requester);
+        sendJson(res, 200, { ...statusPayload(), requester });
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/run") {
         if (!tokenAllowed(req)) {
           sendJson(res, 401, { ok: false, code: "INVALID_TOKEN", error: "Invalid desktop agent pairing token." });
@@ -208,14 +234,10 @@ function startServer() {
         }
 
         const requester = requesterFrom(req, body);
-        if (requester.email || requester.id || requester.name) {
-          config.pairedAccount = requester;
-          saveConfig();
-        }
+        rememberWebsitePairing(requester);
 
         const result = await runCommand(command);
         sendJson(res, 200, { ...result, requester });
-        updateWindow();
         return;
       }
 

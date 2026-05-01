@@ -88,6 +88,15 @@
         background: #22c55e;
       }
 
+      .status.offline {
+        background: rgba(148, 163, 184, 0.13);
+        color: #cbd5e1;
+      }
+
+      .status.offline .dot {
+        background: #94a3b8;
+      }
+
       code {
         display: block;
         margin-top: 8px;
@@ -145,7 +154,9 @@
       <section class="panel hero">
         <div class="label">Website Connection</div>
         <div class="value" id="website">Loading...</div>
-        <div class="status"><span class="dot"></span><span id="connectionStatus">Loading...</span></div>
+        <div class="status" id="connectionPill"><span class="dot"></span><span id="connectionStatus">Loading...</span></div>
+        <div class="value" id="pairedAccount">No OCNE account paired yet.</div>
+        <div class="value" id="lastSeen">Waiting for website heartbeat.</div>
         <p>OCNE Website can use this desktop app after you pair it with the token below.</p>
         <button id="openWebsite">Open OCNE Website</button>
       </section>
