@@ -1,0 +1,13 @@
+OCNE Desktop Agent
+
+OCNE Desktop Agent connects the OCNE website to this computer after the user pairs the desktop app with the website.
+
+Important permissions:
+
+- The desktop app runs only on this computer.
+- The local bridge listens on 127.0.0.1, not on the public internet.
+- Terminal commands run with the permissions of the signed-in Windows or macOS user.
+- If "all files and drives" is enabled, commands can access every file and drive that this computer user can access.
+- Only connect OCNE Desktop Agent to OCNE accounts and websites you trust.
+
+This early build is unsigned. Windows and antivirus products may show warnings until OCNE uses a production code-signing certificate and reputation has been established.

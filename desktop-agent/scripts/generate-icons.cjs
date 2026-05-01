@@ -65,6 +65,51 @@ function drawIcon(size) {
   return pixels;
 }
 
+function drawInstallerImage(width, height, mode) {
+  const pixels = Buffer.alloc(width * height * 4);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const tx = x / Math.max(1, width - 1);
+      const ty = y / Math.max(1, height - 1);
+      pixels[index] = Math.round(4 + 10 * tx);
+      pixels[index + 1] = Math.round(14 + 92 * (1 - ty));
+      pixels[index + 2] = Math.round(28 + 120 * (1 - tx));
+      pixels[index + 3] = 255;
+
+      const glowX = mode === "sidebar" ? width * 0.44 : width * 0.18;
+      const glowY = mode === "sidebar" ? height * 0.26 : height * 0.5;
+      const dx = x - glowX;
+      const dy = y - glowY;
+      const glow = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / (mode === "sidebar" ? 115 : 80));
+      pixels[index] = Math.min(255, pixels[index] + Math.round(glow * 18));
+      pixels[index + 1] = Math.min(255, pixels[index + 1] + Math.round(glow * 150));
+      pixels[index + 2] = Math.min(255, pixels[index + 2] + Math.round(glow * 170));
+    }
+  }
+
+  const iconSize = mode === "sidebar" ? 74 : 38;
+  const icon = drawIcon(iconSize);
+  const iconX = mode === "sidebar" ? Math.round((width - iconSize) / 2) : 14;
+  const iconY = mode === "sidebar" ? 54 : Math.round((height - iconSize) / 2);
+
+  for (let y = 0; y < iconSize; y += 1) {
+    for (let x = 0; x < iconSize; x += 1) {
+      const source = (y * iconSize + x) * 4;
+      const alpha = icon[source + 3] / 255;
+      if (!alpha) continue;
+      const target = ((iconY + y) * width + iconX + x) * 4;
+      for (let c = 0; c < 3; c += 1) {
+        pixels[target + c] = Math.round(icon[source + c] * alpha + pixels[target + c] * (1 - alpha));
+      }
+      pixels[target + 3] = 255;
+    }
+  }
+
+  return pixels;
+}
+
 function png(size) {
   const rgba = drawIcon(size);
   const rows = [];
@@ -85,6 +130,35 @@ function png(size) {
     chunk("IDAT", zlib.deflateSync(Buffer.concat(rows))),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+function bmp(width, height, rgba) {
+  const rowStride = Math.ceil((width * 3) / 4) * 4;
+  const pixelBytes = rowStride * height;
+  const fileSize = 54 + pixelBytes;
+  const file = Buffer.alloc(fileSize);
+
+  file.write("BM", 0, "ascii");
+  file.writeUInt32LE(fileSize, 2);
+  file.writeUInt32LE(54, 10);
+  file.writeUInt32LE(40, 14);
+  file.writeInt32LE(width, 18);
+  file.writeInt32LE(height, 22);
+  file.writeUInt16LE(1, 26);
+  file.writeUInt16LE(24, 28);
+  file.writeUInt32LE(pixelBytes, 34);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const source = ((height - 1 - y) * width + x) * 4;
+      const target = 54 + y * rowStride + x * 3;
+      file[target] = rgba[source + 2];
+      file[target + 1] = rgba[source + 1];
+      file[target + 2] = rgba[source];
+    }
+  }
+
+  return file;
 }
 
 function ico(sizes) {
@@ -115,6 +189,8 @@ function ico(sizes) {
 
 fs.writeFileSync(path.join(buildDir, "icon.png"), png(512));
 fs.writeFileSync(path.join(buildDir, "icon.ico"), ico([16, 32, 48, 64, 128, 256]));
+fs.writeFileSync(path.join(buildDir, "installer-sidebar.bmp"), bmp(164, 314, drawInstallerImage(164, 314, "sidebar")));
+fs.writeFileSync(path.join(buildDir, "installer-header.bmp"), bmp(150, 57, drawInstallerImage(150, 57, "header")));
 fs.writeFileSync(path.join(uiDir, "tray.png"), png(32));
 fs.writeFileSync(path.join(uiDir, "tray.ico"), ico([16, 32]));
 

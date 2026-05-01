@@ -69,6 +69,9 @@ For a production release, add code signing, auto-update, and a first-run pairing
 The scaffold includes:
 
 - app icons generated into `build/`
+- branded Windows installer header/sidebar artwork
+- guided Windows installer flow with license text and install folder selection
+- desktop and Start Menu shortcuts
 - Windows/macOS start-at-login setting
 - `electron-updater` wiring
 - GitHub Releases publish configuration

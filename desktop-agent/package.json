@@ -44,6 +44,21 @@
       "target": "nsis",
       "signAndEditExecutable": false
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OCNE Desktop Agent",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeader": "build/installer-header.bmp",
+      "installerSidebar": "build/installer-sidebar.bmp",
+      "license": "build/license.txt",
+      "runAfterFinish": true,
+      "artifactName": "OCNE-Desktop-Agent-Setup-${version}.${ext}"
+    },
     "mac": {
       "icon": "build/icon.png",
       "target": "dmg",
