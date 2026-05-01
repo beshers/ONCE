@@ -6,6 +6,7 @@ Important permissions:
 
 - The desktop app runs only on this computer.
 - The local bridge listens on 127.0.0.1, not on the public internet.
+- The installer uses the normal system program folder by default. The user can choose another folder during setup.
 - Terminal commands run with the permissions of the signed-in Windows or macOS user.
 - If "all files and drives" is enabled, commands can access every file and drive that this computer user can access.
 - Only connect OCNE Desktop Agent to OCNE accounts and websites you trust.

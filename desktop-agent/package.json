@@ -47,7 +47,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": false,
+      "perMachine": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "OCNE Desktop Agent",
