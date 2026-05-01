@@ -43,7 +43,7 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "0A95446E3456FF5A792AAB7A865F6D987A20BCB761D4162ABDA60EDDC818DA4A";
+const WINDOWS_AGENT_SHA256 = "BC00313D237522771836B9DC460FA8E9C948F8BD4E230523FCF2C200A4568C25";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -249,7 +249,7 @@ export default function LocalAgentPage() {
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
               <div className="text-sm font-semibold text-cyan-100">Install OCNE Desktop Agent</div>
               <p className="mt-2 text-xs leading-5 text-cyan-100/80">
-                Download the Windows app and open the installer. During setup, the user can choose admin/all-users install or current-user install, and can change the installation folder.
+                Download the Windows app and open the installer. Setup installs for all users, asks Windows for administrator permission, and still lets the user change the installation folder.
               </p>
               <a
                 href={WINDOWS_AGENT_DOWNLOAD}
@@ -260,7 +260,7 @@ export default function LocalAgentPage() {
                 Download Windows Agent
               </a>
               <div className="mt-3 text-[11px] text-cyan-100/70">
-                Windows may ask for confirmation because this early installer is not code-signed yet.
+                The installer asks for administrator confirmation. Antivirus trust still requires code signing and reputation.
               </div>
               <div className="mt-2 break-all text-[11px] text-cyan-100/60">
                 SHA256: {WINDOWS_AGENT_SHA256}

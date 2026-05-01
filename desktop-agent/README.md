@@ -80,5 +80,6 @@ The scaffold includes:
 For a public build:
 
 - Windows: add a real code-signing certificate and remove `"signAndEditExecutable": false`.
+- To make the app itself ask for administrator permission on every launch, set `"requestedExecutionLevel": "requireAdministrator"` in `build.win`, remove `"signAndEditExecutable": false`, and run the package command from an elevated Windows session or with Windows Developer Mode enabled. This build step edits the Windows executable manifest.
 - macOS: build on macOS with an Apple Developer ID certificate and notarization credentials.
 - Auto-update: publish installer releases to GitHub Releases for `beshers/ONCE`.

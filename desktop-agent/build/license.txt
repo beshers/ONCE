@@ -6,7 +6,8 @@ Important permissions:
 
 - The desktop app runs only on this computer.
 - The local bridge listens on 127.0.0.1, not on the public internet.
-- The installer lets the user choose whether to install for all users with administrator/system permissions or only for the current user.
+- The installer installs for all users and asks Windows for administrator permission.
+- This unsigned development build does not force administrator permission every time it starts. For a production admin-only build, package it from an elevated or Windows Developer Mode session with a real code-signing certificate.
 - The user can choose another installation folder during setup.
 - Terminal commands run with the permissions of the signed-in Windows or macOS user.
 - If "all files and drives" is enabled, commands can access every file and drive that this computer user can access.
