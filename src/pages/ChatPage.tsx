@@ -88,6 +88,12 @@ function parseMeta(raw?: string | null): EventMeta | null {
   }
 }
 
+const CALL_SIGNAL_ACTIONS = new Set(["offer", "answer", "ice", "reject", "end"]);
+
+function isCallSignal(meta: EventMeta | null) {
+  return meta?.kind === "call" && Boolean(meta.action && CALL_SIGNAL_ACTIONS.has(meta.action));
+}
+
 function makeGuestLink() {
   const token = Math.random().toString(36).slice(2, 10);
   const baseUrl =
@@ -162,8 +168,15 @@ export default function ChatPage() {
   const { data: rooms, refetch: refetchRooms } = trpc.chat.rooms.useQuery();
   const { data: publicRooms, refetch: refetchPublicRooms } = trpc.chat.publicRooms.useQuery();
   const { data: directThreads, refetch: refetchDirectThreads } = trpc.chat.directThreads.useQuery(undefined, {
-    refetchInterval: 10000,
+    refetchInterval: callState !== "idle" || !enableWebSockets ? 2000 : 10000,
   });
+  const { data: incomingCallOffers } = trpc.chat.incomingCallOffers.useQuery(
+    { since: 0 },
+    {
+      enabled: Boolean(user?.id),
+      refetchInterval: callState === "idle" ? 1500 : false,
+    },
+  );
   const { data: onlineUsers } = trpc.user.onlineUsers.useQuery(undefined, {
     refetchInterval: 15000,
   });
@@ -187,7 +200,7 @@ export default function ChatPage() {
   );
   const { data: messages, refetch } = trpc.chat.messages.useQuery(
     messageQueryInput,
-    { refetchInterval: 3000 },
+    { refetchInterval: callState !== "idle" || directRecipientId ? 800 : 3000 },
   );
   const { data: searchResults } = trpc.chat.searchMessages.useQuery(
     directRecipientId
@@ -307,19 +320,7 @@ export default function ChatPage() {
       if (meta?.kind !== "call" || meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return;
 
       processedSignalIdsRef.current.add(event.messageId);
-      activeCallIdRef.current = meta.callId;
-      setActiveRoom("global");
-      setDirectRecipientId(String(event.senderId));
-      setIncomingCall({
-        callId: meta.callId,
-        mode: meta.mode === "video" ? "video" : "voice",
-        fromUserId: String(event.senderId),
-        offer: meta.signalData as RTCSessionDescriptionInit,
-      });
-      setCallMode(meta.mode === "video" ? "video" : "voice");
-      callModeRef.current = meta.mode === "video" ? "video" : "voice";
-      setCallState("incoming");
-      setActionError(`${meta.mode === "video" ? "Video" : "Voice"} call incoming.`);
+      handleIncomingOffer(String(event.senderId), meta);
       void utils.chat.messages.invalidate();
       void utils.chat.directThreads.invalidate();
       void utils.notification.unread.invalidate();
@@ -433,7 +434,15 @@ export default function ChatPage() {
     }));
   }, [searchResults]);
 
-  const streamEntries = messageSearch.trim().length > 1 ? searchedMessages : enrichedMessages;
+  const visibleEnrichedMessages = useMemo(() => {
+    return enrichedMessages.filter((entry) => !isCallSignal(entry.meta));
+  }, [enrichedMessages]);
+
+  const visibleSearchedMessages = useMemo(() => {
+    return searchedMessages.filter((entry) => !isCallSignal(entry.meta));
+  }, [searchedMessages]);
+
+  const streamEntries = messageSearch.trim().length > 1 ? visibleSearchedMessages : visibleEnrichedMessages;
 
   const transcriptEntries = useMemo(() => {
     const q = transcriptSearch.trim().toLowerCase();
@@ -485,6 +494,24 @@ export default function ChatPage() {
   const meetingOptionButtonClass =
     "min-h-10 h-auto w-full justify-start rounded-xl px-3 py-2 text-left text-xs leading-snug whitespace-normal";
 
+  function handleIncomingOffer(senderId: string, meta: EventMeta) {
+    if (!meta.callId || !meta.signalData || !meta.mode) return;
+    const mode = meta.mode === "video" ? "video" : "voice";
+    activeCallIdRef.current = meta.callId;
+    setActiveRoom("global");
+    setDirectRecipientId(senderId);
+    setIncomingCall({
+      callId: meta.callId,
+      mode,
+      fromUserId: senderId,
+      offer: meta.signalData as RTCSessionDescriptionInit,
+    });
+    setCallMode(mode);
+    callModeRef.current = mode;
+    setCallState("incoming");
+    setActionError(`${mode === "video" ? "Video" : "Voice"} call incoming.`);
+  }
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -514,10 +541,44 @@ export default function ChatPage() {
   }, [browserNotificationsEnabled, notificationUnread]);
 
   useEffect(() => {
+    if (callState !== "idle" || !user?.id) return;
+    const incomingOffer = (incomingCallOffers || []).find((entry) => {
+      const meta = entry.metadata as EventMeta | null;
+      if (!entry.message || !meta || !isCallSignal(meta)) return false;
+      if (meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return false;
+      if (processedSignalIdsRef.current.has(entry.message.id)) return false;
+      if (String(entry.message.senderId) === String(user.id)) return false;
+      if (String(entry.message.receiverId) !== String(user.id)) return false;
+      return true;
+    });
+    if (incomingOffer?.message) {
+      processedSignalIdsRef.current.add(incomingOffer.message.id);
+      handleIncomingOffer(String(incomingOffer.message.senderId), incomingOffer.metadata as EventMeta);
+      return;
+    }
+
+    const incomingThread = (directThreads || []).find((thread) => {
+      const latest = thread.latestMessage;
+      const meta = thread.latestMetadata as EventMeta | null;
+      if (!latest || !meta || !isCallSignal(meta)) return false;
+      if (meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return false;
+      if (processedSignalIdsRef.current.has(latest.id)) return false;
+      if (String(latest.senderId) === String(user.id)) return false;
+      if (String(latest.receiverId) !== String(user.id)) return false;
+      return Date.now() - new Date(latest.createdAt).getTime() < 120_000;
+    });
+    if (!incomingThread?.latestMessage) return;
+    processedSignalIdsRef.current.add(incomingThread.latestMessage.id);
+    handleIncomingOffer(
+      String(incomingThread.latestMessage.senderId),
+      incomingThread.latestMetadata as EventMeta,
+    );
+  }, [callState, directThreads, incomingCallOffers, user?.id]);
+
+  useEffect(() => {
     setLastMessageId(0);
     setMessageText("");
     setMessageSearch("");
-    processedSignalIdsRef.current.clear();
     if (!directRecipientId) {
       // eslint-disable-next-line react-hooks/immutability
       void cleanupActiveCall(false);
@@ -573,16 +634,7 @@ export default function ChatPage() {
         if (meta.targetUserId && String(meta.targetUserId) !== String(user?.id)) continue;
 
         if (meta.action === "offer" && meta.signalData && meta.mode && callState === "idle") {
-          activeCallIdRef.current = meta.callId;
-          setIncomingCall({
-            callId: meta.callId,
-            mode: meta.mode === "video" ? "video" : "voice",
-            fromUserId: String(entry.message.senderId),
-            offer: meta.signalData as RTCSessionDescriptionInit,
-          });
-          setCallMode(meta.mode === "video" ? "video" : "voice");
-          callModeRef.current = meta.mode === "video" ? "video" : "voice";
-          setCallState("incoming");
+          handleIncomingOffer(String(entry.message.senderId), meta);
         }
 
         if (meta.action === "answer" && meta.signalData && activeCallIdRef.current === meta.callId) {
@@ -665,7 +717,7 @@ export default function ChatPage() {
     pc.onicecandidate = (event) => {
       if (!event.candidate || !directRecipientId) return;
       void sendWebRTCSignal(
-        "ICE candidate exchanged for direct call.",
+        ".",
         {
           kind: "call",
           title: "Call signal",
@@ -707,7 +759,7 @@ export default function ChatPage() {
 
   async function cleanupActiveCall(sendEndSignal: boolean) {
     if (sendEndSignal && directRecipientId && activeCallIdRef.current) {
-      await sendWebRTCSignal("Call ended.", {
+      await sendWebRTCSignal(".", {
         kind: "call",
         title: "Call ended",
         action: "end",
@@ -770,7 +822,7 @@ export default function ChatPage() {
     await pc.setLocalDescription(offer);
 
     await sendWebRTCSignal(
-      `${mode} call invitation sent.`,
+      `${mode} call`,
       {
         kind: "call",
         title: `${mode} call invitation`,
@@ -805,7 +857,7 @@ export default function ChatPage() {
       await pc.setLocalDescription(answer);
 
       await sendWebRTCSignal(
-        `${incomingCall.mode} call accepted.`,
+        ".",
         {
           kind: "call",
           title: `${incomingCall.mode} call accepted`,
@@ -826,7 +878,7 @@ export default function ChatPage() {
 
   async function rejectIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
-    await sendWebRTCSignal("Call declined.", {
+    await sendWebRTCSignal(".", {
       kind: "call",
       title: "Call declined",
       action: "reject",

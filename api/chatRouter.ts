@@ -341,6 +341,47 @@ export const chatRouter = createRouter({
     }).filter((thread) => thread.user);
   }),
 
+  incomingCallOffers: authedQuery
+    .input(z.object({ since: z.number().default(0) }).optional())
+    .query(async ({ ctx, input }) => {
+      const db = getDb();
+      const conditions = [
+        eq(messages.receiverId, ctx.user.id),
+        sql`${messages.roomId} IS NULL`,
+      ];
+
+      if ((input?.since || 0) > 0) {
+        conditions.push(gt(messages.id, input!.since));
+      }
+
+      const rows = await db
+        .select({
+          message: messages,
+          sender: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
+        })
+        .from(messages)
+        .leftJoin(users, eq(messages.senderId, users.id))
+        .where(and(...conditions))
+        .orderBy(desc(messages.createdAt))
+        .limit(50);
+
+      return rows
+        .map((row) => ({
+          ...row,
+          metadata: parseMessageMetadata(row.message.metadata),
+        }))
+        .filter((row) => {
+          const metadata = row.metadata;
+          return (
+            metadata?.kind === "call" &&
+            metadata?.action === "offer" &&
+            typeof metadata.callId === "string" &&
+            Date.now() - new Date(row.message.createdAt).getTime() < 120_000
+          );
+        })
+        .reverse();
+    }),
+
   createRoom: authedQuery
     .input(
       z.object({
