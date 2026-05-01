@@ -11,6 +11,7 @@ export function serveStaticFiles(app: App) {
   const indexPath = path.resolve(distPath, "index.html");
 
   app.get("/assets/*", serveStatic({ root: "./dist/public" }));
+  app.get("/downloads/*", serveStatic({ root: "./dist/public" }));
   app.get("/manifest.json", serveStatic({ path: "./dist/public/manifest.json" }));
   app.get("/sw.js", serveStatic({ path: "./dist/public/sw.js" }));
   app.get("/favicon.ico", serveStatic({ path: "./dist/public/favicon.ico" }));

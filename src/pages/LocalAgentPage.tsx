@@ -43,6 +43,7 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
+const WINDOWS_AGENT_SHA256 = "9A4CD0187664356874AC955D2A91F797B9E1DF2C938B317B39830278A300D4AF";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -260,6 +261,9 @@ export default function LocalAgentPage() {
               </a>
               <div className="mt-3 text-[11px] text-cyan-100/70">
                 Windows may ask for confirmation because this early installer is not code-signed yet.
+              </div>
+              <div className="mt-2 break-all text-[11px] text-cyan-100/60">
+                SHA256: {WINDOWS_AGENT_SHA256}
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
