@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, MonitorUp, Play, Plug, ShieldCheck, Terminal } from "lucide-react";
+import { AlertTriangle, MonitorUp, Play, Plug, ShieldCheck, Terminal, Unplug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,7 @@ function explainError(error: unknown) {
 export default function LocalAgentPage() {
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem("ocne-agent-endpoint") || DEFAULT_ENDPOINT);
   const [token, setToken] = useState(() => localStorage.getItem("ocne-agent-token") || "");
+  const [stayConnected, setStayConnected] = useState(() => localStorage.getItem("ocne-agent-stay-connected") === "true");
   const [command, setCommand] = useState("python --version");
   const [approval, setApproval] = useState("");
   const [health, setHealth] = useState<AgentHealth | null>(null);
@@ -90,13 +91,28 @@ export default function LocalAgentPage() {
     localStorage.setItem("ocne-agent-token", token.trim());
   }, [token]);
 
-  async function connect() {
+  useEffect(() => {
+    localStorage.setItem("ocne-agent-stay-connected", stayConnected ? "true" : "false");
+  }, [stayConnected]);
+
+  useEffect(() => {
+    if (stayConnected) {
+      void connect({ remember: true, quiet: true });
+    }
+    // Run once on mount so a saved connection can restore itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function connect(options?: { remember?: boolean; quiet?: boolean }) {
     setStatus("Connecting to local agent...");
     setResult(null);
     setHealth(null);
     try {
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
       setHealth(data);
+      if (options?.remember) {
+        setStayConnected(true);
+      }
       setStatus(
         data.version === EXPECTED_AGENT_VERSION
           ? "Connected. Type APPROVE in the website before running a command."
@@ -104,8 +120,16 @@ export default function LocalAgentPage() {
       );
     } catch (error) {
       setHealth(null);
-      setStatus(explainError(error));
+      setStatus(options?.quiet ? "Saved agent is not reachable. Start it, then connect again." : explainError(error));
     }
+  }
+
+  function disconnect() {
+    setHealth(null);
+    setResult(null);
+    setApproval("");
+    setStayConnected(false);
+    setStatus("Disconnected. Saved endpoint/token remain in the browser so you can connect again.");
   }
 
   async function runCommand() {
@@ -186,10 +210,25 @@ export default function LocalAgentPage() {
             {tokenRequired && (
               <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste local agent token" className="border-white/10 bg-black/30 text-white" />
             )}
-            <Button onClick={() => void connect()} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400">
-              <Plug className="mr-2 h-4 w-4" />
-              Connect to agent
-            </Button>
+            <label className="flex items-start gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={stayConnected}
+                onChange={(event) => setStayConnected(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span>Stay connected in this browser and auto-connect next time.</span>
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button onClick={() => void connect({ remember: stayConnected })} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                <Plug className="mr-2 h-4 w-4" />
+                {health ? "Reconnect" : "Connect to agent"}
+              </Button>
+              <Button onClick={disconnect} disabled={!health && !stayConnected} variant="ghost" className="w-full border border-white/10 text-slate-200 hover:bg-white/10">
+                <Unplug className="mr-2 h-4 w-4" />
+                Disconnect
+              </Button>
+            </div>
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{status}</div>
             {health && (
               <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
