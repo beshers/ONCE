@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmbeddedTerminal from "@/components/EmbeddedTerminal";
+import LocalAgentPage from "@/pages/LocalAgentPage";
 import { toast } from "sonner";
 import {
   FileCode, Folder, Save, Play, MessageSquare,
   Plus, Trash2, Clock,
-  Users, ArrowLeft, Share2, GitBranch
+  Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp
 } from "lucide-react";
 
 const languages = [
@@ -35,6 +36,7 @@ export default function EditorPage() {
   const [createFileOpen, setCreateFileOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [reviewLineStart, setReviewLineStart] = useState(0);
+  const [aiPrompt, setAiPrompt] = useState("");
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const utils = trpc.useUtils();
@@ -45,7 +47,10 @@ export default function EditorPage() {
   );
   const { data: files } = trpc.project.fileList.useQuery(
     { projectId: projectId! },
-    { enabled: !!projectId }
+    {
+      enabled: !!projectId,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 2000 : false,
+    }
   );
   const { data: versions } = trpc.project.versions.useQuery(
     { fileId: activeFileId! },
@@ -53,11 +58,17 @@ export default function EditorPage() {
   );
   const { data: reviews } = trpc.review.list.useQuery(
     { fileId: activeFileId! },
-    { enabled: !!activeFileId }
+    {
+      enabled: !!activeFileId,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 3000 : false,
+    }
   );
   const { data: collaborators } = trpc.project.collaborators.useQuery(
     { projectId: projectId! },
-    { enabled: !!projectId }
+    {
+      enabled: !!projectId,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : false,
+    }
   );
 
   const saveFile = trpc.project.fileUpdate.useMutation({
@@ -95,7 +106,16 @@ export default function EditorPage() {
     },
   });
 
+  const updateProject = trpc.project.update.useMutation({
+    onSuccess: () => {
+      toast.success("Project settings saved");
+      utils.project.get.invalidate({ id: projectId! });
+      utils.project.list.invalidate();
+    },
+  });
+
   const activeFile = files?.find((f) => f.id === activeFileId);
+  const isModified = code !== originalCode;
 
   useEffect(() => {
     if (activeFile) {
@@ -103,6 +123,13 @@ export default function EditorPage() {
       setOriginalCode(activeFile.content || "");
     }
   }, [activeFile?.id]);
+
+  useEffect(() => {
+    if (activeFile && !isModified) {
+      setCode(activeFile.content || "");
+      setOriginalCode(activeFile.content || "");
+    }
+  }, [activeFile?.updatedAt]);
 
   const handleSave = () => {
     if (!activeFileId) return;
@@ -112,8 +139,6 @@ export default function EditorPage() {
   const handleRun = () => {
     toast.info("Running code in browser... (Simulated execution)");
   };
-
-  const isModified = code !== originalCode;
 
   // Line numbers for the textarea
   const lines = code.split("\n");
@@ -172,6 +197,9 @@ export default function EditorPage() {
               {isModified && (
                 <span className="text-amber-400">● Modified</span>
               )}
+              {project?.collaborationMode && project.collaborationMode !== "solo" && (
+                <span className="text-emerald-400">Live sync on</span>
+              )}
             </div>
           </div>
         </div>
@@ -212,6 +240,15 @@ export default function EditorPage() {
           </TabsTrigger>
           <TabsTrigger value="collaborators" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <Users className="w-3.5 h-3.5 mr-1.5" /> Team
+          </TabsTrigger>
+          <TabsTrigger value="ai-agent" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
+            <Bot className="w-3.5 h-3.5 mr-1.5" /> AI Agent
+          </TabsTrigger>
+          <TabsTrigger value="local-agent" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
+            <MonitorUp className="w-3.5 h-3.5 mr-1.5" /> Terminal Agent
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
+            <Settings className="w-3.5 h-3.5 mr-1.5" /> Settings
           </TabsTrigger>
         </TabsList>
 
@@ -488,7 +525,17 @@ export default function EditorPage() {
 
         <TabsContent value="collaborators" className="flex-1 mt-0">
           <div className="h-full bg-[#13131f] border border-white/5 rounded-xl p-4 overflow-auto">
-            <h3 className="text-sm font-semibold text-white mb-4">Project Collaborators</h3>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Project Collaborators</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Collaboration mode: {project?.collaborationMode || "solo"}
+                </p>
+              </div>
+              <Badge variant="outline" className="border-white/10 text-slate-400">
+                {project?.collaborationMode === "solo" ? "Individual" : project?.collaborationMode === "team" ? "Invited team" : "Public collaboration"}
+              </Badge>
+            </div>
             <div className="space-y-2">
               {(collaborators || []).map((c) => (
                 <div key={c.collab.id} className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/5">
@@ -506,6 +553,132 @@ export default function EditorPage() {
                   </Badge>
                 </div>
               ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="ai-agent" className="flex-1 mt-0">
+          <div className="grid h-full gap-4 overflow-auto lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-xl border border-white/5 bg-[#13131f] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Bot className="h-4 w-4 text-cyan-300" /> Project AI agent
+                  </h3>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    The owner can enable this workspace per project. It is prepared for shared code review, planning, and project-aware suggestions.
+                  </p>
+                </div>
+                <Badge className={project?.aiAgentEnabled ? "bg-cyan-500/15 text-cyan-200" : "bg-slate-500/15 text-slate-300"}>
+                  {project?.aiAgentEnabled ? "Enabled" : "Disabled"}
+                </Badge>
+              </div>
+              <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                <div className="mb-2 flex items-center gap-2 font-medium text-slate-100">
+                  <Sparkles className="h-4 w-4 text-amber-300" /> Context available
+                </div>
+                <div>Project: {project?.name}</div>
+                <div>Mode: {project?.collaborationMode || "solo"}</div>
+                <div>Active file: {activeFile?.name || "No file selected"}</div>
+                <div>Local files: {project?.localFilesEnabled ? "Allowed after desktop pairing" : "Off for this project"}</div>
+              </div>
+              <textarea
+                value={aiPrompt}
+                onChange={(event) => setAiPrompt(event.target.value)}
+                disabled={!project?.aiAgentEnabled}
+                className="mt-4 min-h-36 w-full resize-none rounded-lg border border-white/10 bg-black/30 p-3 text-sm text-white outline-none placeholder:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
+                placeholder={project?.aiAgentEnabled ? "Ask the project agent to review, explain, or plan changes..." : "Enable the AI agent in Project Settings first."}
+              />
+              <Button
+                disabled={!project?.aiAgentEnabled || !aiPrompt.trim()}
+                className="mt-3 bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                onClick={() => toast.info("AI provider wiring is ready here. Connect your AI backend/API key to return real code suggestions.")}
+              >
+                <Bot className="mr-2 h-4 w-4" /> Ask agent
+              </Button>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-[#0d0d12] p-4">
+              <h3 className="text-sm font-semibold text-white">Collaboration flow</h3>
+              <div className="mt-4 grid gap-3 text-sm">
+                {[
+                  ["Individual", "Solo mode keeps editing private to the owner."],
+                  ["Together", "Team mode uses project collaborators as editors or viewers."],
+                  ["Public", "Public collaboration lets visible projects accept wider participation rules."],
+                ].map(([title, text]) => (
+                  <div key={title} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="font-medium text-white">{title}</div>
+                    <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="local-agent" className="flex-1 mt-0 overflow-auto">
+          {project?.localFilesEnabled ? (
+            <LocalAgentPage />
+          ) : (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
+              <div className="flex items-center gap-2 font-semibold">
+                <HardDrive className="h-4 w-4" /> Local file access is off for this project
+              </div>
+              <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                Enable local file access in Project Settings before using the desktop terminal agent with this project.
+              </p>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="settings" className="flex-1 mt-0">
+          <div className="h-full overflow-auto rounded-xl border border-white/5 bg-[#13131f] p-4">
+            <h3 className="text-sm font-semibold text-white">Project Settings</h3>
+            <p className="mt-1 text-xs text-slate-500">Control AI help, local-file access, and how people collaborate on this project.</p>
+            <div className="mt-4 grid gap-3">
+              <label className="flex items-start justify-between gap-4 rounded-lg border border-white/10 bg-black/20 p-3">
+                <span>
+                  <span className="flex items-center gap-2 text-sm font-medium text-white">
+                    <Bot className="h-4 w-4 text-cyan-300" /> Enable AI agent
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">Shows the project AI workspace for planning, reviews, and future code edits.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(project?.aiAgentEnabled)}
+                  onChange={(event) => updateProject.mutate({ id: projectId!, aiAgentEnabled: event.target.checked })}
+                  className="mt-1 h-4 w-4"
+                />
+              </label>
+              <label className="flex items-start justify-between gap-4 rounded-lg border border-white/10 bg-black/20 p-3">
+                <span>
+                  <span className="flex items-center gap-2 text-sm font-medium text-white">
+                    <HardDrive className="h-4 w-4 text-emerald-300" /> Allow local files
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">Allows this project to use the paired OCNE Desktop Agent terminal on the user's computer.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={Boolean(project?.localFilesEnabled)}
+                  onChange={(event) => updateProject.mutate({ id: projectId!, localFilesEnabled: event.target.checked })}
+                  className="mt-1 h-4 w-4"
+                />
+              </label>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <label className="mb-2 block text-sm font-medium text-white">Collaboration mode</label>
+                <Select
+                  value={project?.collaborationMode || "solo"}
+                  onValueChange={(value: "solo" | "team" | "public") => updateProject.mutate({ id: projectId!, collaborationMode: value })}
+                >
+                  <SelectTrigger className="border-white/10 bg-white/5 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                    <SelectItem value="solo" className="text-white">Solo workspace</SelectItem>
+                    <SelectItem value="team" className="text-white">Invite collaborators</SelectItem>
+                    <SelectItem value="public" className="text-white">Public collaboration</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </TabsContent>

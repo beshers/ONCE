@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   FolderOpen, Plus, Search, Globe, Lock,
-  Clock, Code2, Star
+  Clock, Code2, Star, Bot, HardDrive, UserRound, Users
 } from "lucide-react";
 
 const languageIcons: Record<string, string> = {
@@ -48,6 +48,9 @@ export default function ProjectsPage() {
     description: "",
     language: "javascript",
     isPublic: true,
+    aiAgentEnabled: false,
+    localFilesEnabled: false,
+    collaborationMode: "solo" as "solo" | "team" | "public",
   });
 
   const allProjects = [
@@ -132,6 +135,52 @@ export default function ProjectsPage() {
                 />
                 <span className="text-sm text-slate-300">Public project</span>
               </div>
+              <div className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-white">
+                      <Bot className="h-4 w-4 text-cyan-300" /> AI coding agent
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Allow the project editor to show an AI collaboration workspace.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newProject.aiAgentEnabled}
+                    onChange={(e) => setNewProject({ ...newProject, aiAgentEnabled: e.target.checked })}
+                    className="h-4 w-4 rounded border-white/20"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-medium text-white">
+                      <HardDrive className="h-4 w-4 text-emerald-300" /> Local files
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">Let this project use the desktop terminal agent after the user pairs their computer.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={newProject.localFilesEnabled}
+                    onChange={(e) => setNewProject({ ...newProject, localFilesEnabled: e.target.checked })}
+                    className="h-4 w-4 rounded border-white/20"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 mb-1 block">Collaboration</label>
+                  <Select
+                    value={newProject.collaborationMode}
+                    onValueChange={(v: "solo" | "team" | "public") => setNewProject({ ...newProject, collaborationMode: v })}
+                  >
+                    <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#1a1a2e] border-white/10">
+                      <SelectItem value="solo" className="text-white">Solo workspace</SelectItem>
+                      <SelectItem value="team" className="text-white">Invite collaborators</SelectItem>
+                      <SelectItem value="public" className="text-white">Public collaboration</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <Button
                 onClick={handleCreate}
                 disabled={createProject.isPending || !newProject.name.trim()}
@@ -197,6 +246,22 @@ export default function ProjectsPage() {
                   {project.name}
                 </h3>
                 <p className="text-xs text-slate-500 line-clamp-2 mb-3">{project.description || "No description"}</p>
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {project.aiAgentEnabled && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
+                      <Bot className="h-3 w-3" /> AI
+                    </span>
+                  )}
+                  {project.localFilesEnabled && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-200">
+                      <HardDrive className="h-3 w-3" /> Local
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-slate-400">
+                    {project.collaborationMode === "solo" ? <UserRound className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+                    {project.collaborationMode || "solo"}
+                  </span>
+                </div>
                 <div className="flex items-center gap-3 text-[10px] text-slate-600">
                   <span className="flex items-center gap-1">
                     <Code2 className="w-3 h-3" /> {project.language || "plaintext"}

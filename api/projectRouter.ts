@@ -43,6 +43,9 @@ export const projectRouter = createRouter({
       description: z.string().optional(),
       language: z.string().default("plaintext"),
       isPublic: z.boolean().default(true),
+      aiAgentEnabled: z.boolean().default(false),
+      localFilesEnabled: z.boolean().default(false),
+      collaborationMode: z.enum(["solo", "team", "public"]).default("solo"),
       tags: z.string().optional(),
       initialCode: z.string().optional(),
     }))
@@ -54,6 +57,9 @@ export const projectRouter = createRouter({
         description: input.description,
         language: input.language,
         isPublic: input.isPublic,
+        aiAgentEnabled: input.aiAgentEnabled,
+        localFilesEnabled: input.localFilesEnabled,
+        collaborationMode: input.collaborationMode,
         tags: input.tags,
       }).$returningId();
       await db.insert(projectFiles).values({
@@ -75,6 +81,9 @@ export const projectRouter = createRouter({
       description: z.string().optional(),
       language: z.string().optional(),
       isPublic: z.boolean().optional(),
+      aiAgentEnabled: z.boolean().optional(),
+      localFilesEnabled: z.boolean().optional(),
+      collaborationMode: z.enum(["solo", "team", "public"]).optional(),
       tags: z.string().optional(),
       status: z.enum(["active", "archived", "draft"]).optional(),
     }))

@@ -25,6 +25,12 @@ const userColumns = [
   ["last_login_at", "TIMESTAMP NULL DEFAULT NULL AFTER updated_at"],
 ] as const;
 
+const projectColumns = [
+  ["ai_agent_enabled", "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_public"],
+  ["local_files_enabled", "TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_agent_enabled"],
+  ["collaboration_mode", "ENUM('solo','team','public') NOT NULL DEFAULT 'solo' AFTER local_files_enabled"],
+] as const;
+
 const coreTableSql = [
   `CREATE TABLE IF NOT EXISTS projects (
     id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -33,6 +39,9 @@ const coreTableSql = [
     description TEXT DEFAULT NULL,
     language VARCHAR(50) DEFAULT 'plaintext',
     is_public TINYINT(1) NOT NULL DEFAULT 1,
+    ai_agent_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    local_files_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    collaboration_mode ENUM('solo','team','public') NOT NULL DEFAULT 'solo',
     code TEXT DEFAULT NULL,
     stars INT NOT NULL DEFAULT 0,
     forks INT NOT NULL DEFAULT 0,
@@ -268,25 +277,33 @@ const defaultBadges = [
 ] as const;
 
 async function ensureColumn(connection: mysql.Connection, column: string, definition: string) {
+  await ensureTableColumn(connection, "users", column, definition);
+}
+
+async function ensureTableColumn(connection: mysql.Connection, table: string, column: string, definition: string) {
   const [rows] = await connection.execute<mysql.RowDataPacket[]>(
     `
       SELECT COUNT(*) AS count
       FROM information_schema.columns
       WHERE table_schema = DATABASE()
-        AND table_name = 'users'
+        AND table_name = ?
         AND column_name = ?
     `,
-    [column],
+    [table, column],
   );
 
   if (Number(rows[0]?.count ?? 0) === 0) {
-    await connection.query(`ALTER TABLE users ADD COLUMN ${column} ${definition}`);
+    await connection.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 }
 
 async function ensureCoreTables(connection: mysql.Connection) {
   for (const statement of coreTableSql) {
     await connection.query(statement);
+  }
+
+  for (const [column, definition] of projectColumns) {
+    await ensureTableColumn(connection, "projects", column, definition);
   }
 
   for (const [name, description, icon, color, requirementType, requirementValue] of defaultBadges) {

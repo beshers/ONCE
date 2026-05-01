@@ -102,6 +102,11 @@ export const projects = mysqlTable(
     description: text("description"),
     language: varchar("language", { length: 50 }).default("plaintext"),
     isPublic: boolean("is_public").default(true).notNull(),
+    aiAgentEnabled: boolean("ai_agent_enabled").default(false).notNull(),
+    localFilesEnabled: boolean("local_files_enabled").default(false).notNull(),
+    collaborationMode: mysqlEnum("collaboration_mode", ["solo", "team", "public"])
+      .default("solo")
+      .notNull(),
     code: text("code"),
     stars: int("stars").default(0).notNull(),
     forks: int("forks").default(0).notNull(),
