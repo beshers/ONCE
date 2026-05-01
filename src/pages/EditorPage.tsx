@@ -186,7 +186,8 @@ export default function EditorPage() {
   }, [activeFileId, activeFile?.language, code, isModified, project?.collaborationMode, saveFile.isPending]);
 
   const handleRun = () => {
-    toast.info("Running code in browser... (Simulated execution)");
+    setActiveTab("terminal");
+    toast.info("Use the Terminal Agent panel to run this project on the connected computer.");
   };
 
   // Line numbers for the textarea
@@ -457,7 +458,7 @@ export default function EditorPage() {
             disabled={!isModified || saveFile.isPending}
             className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
           >
-            <Save className="w-4 h-4 mr-1.5" /> Save
+            <Save className="w-4 h-4 mr-1.5" /> Save live
           </Button>
           <Button
             variant="ghost"
@@ -465,7 +466,7 @@ export default function EditorPage() {
             onClick={handleRun}
             className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10"
           >
-            <Play className="w-4 h-4 mr-1.5" /> Run
+            <Play className="w-4 h-4 mr-1.5" /> Run on device
           </Button>
           <Button variant="ghost" size="sm" className="text-slate-400">
             <Share2 className="w-4 h-4 mr-1.5" /> Share
@@ -643,9 +644,13 @@ export default function EditorPage() {
           {project?.localFilesEnabled ? (
             <DeviceEditorBridge
               projectName={project?.name}
+              activeFileId={activeFileId}
               fileName={activeFile?.name}
               content={code}
               projectFiles={files || []}
+              isLiveModified={isModified}
+              isSavingLive={saveFile.isPending}
+              onSaveLive={handleSave}
               onImport={setCode}
               onImportProject={importDeviceProject}
               disabled={!activeFile}

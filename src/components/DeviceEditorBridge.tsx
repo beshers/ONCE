@@ -18,9 +18,13 @@ type AgentHealth = {
 
 type DeviceEditorBridgeProps = {
   projectName?: string;
+  activeFileId?: number | null;
   fileName?: string;
   content: string;
   projectFiles?: BridgeFile[];
+  isLiveModified?: boolean;
+  isSavingLive?: boolean;
+  onSaveLive?: () => void;
   onImport: (content: string) => void;
   onImportProject?: (items: ImportedProjectItem[]) => Promise<void> | void;
   disabled?: boolean;
@@ -82,9 +86,13 @@ function fromBase64Utf8(value: string) {
 
 export default function DeviceEditorBridge({
   projectName = "ocne-project",
+  activeFileId = null,
   fileName = "main.txt",
   content,
   projectFiles = [],
+  isLiveModified = false,
+  isSavingLive = false,
+  onSaveLive,
   onImport,
   onImportProject,
   disabled = false,
@@ -218,7 +226,7 @@ export default function DeviceEditorBridge({
       const manifest = projectFiles.map((file) => ({
         path: projectPathFor(file),
         type: file.type,
-        content: file.type === "file" ? file.content || "" : "",
+        content: file.type === "file" ? (file.id === activeFileId ? content : file.content || "") : "",
       }));
       const encoded = toBase64Utf8(JSON.stringify(manifest));
       const command = `$root='${root}'; New-Item -ItemType Directory -Force -Path $root | Out-Null; $json=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); $items=$json | ConvertFrom-Json; foreach ($item in $items) { $target=Join-Path $root $item.path; if ($item.type -eq 'folder') { New-Item -ItemType Directory -Force -Path $target | Out-Null } else { $dir=Split-Path -Parent $target; if ($dir) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }; [IO.File]::WriteAllText($target, [string]$item.content, [Text.UTF8Encoding]::new($false)) } }; Write-Output "Saved project to $root"`;
@@ -273,7 +281,7 @@ export default function DeviceEditorBridge({
             <HardDrive className="h-4 w-4 text-emerald-300" /> Device bridge
           </h3>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Sync the live editor and full project folder with the user's paired computer.
+            Save online to live coding, save locally to the user's computer, and run commands in the project folder.
           </p>
         </div>
         <Badge className={health ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-200"}>
@@ -314,20 +322,31 @@ export default function DeviceEditorBridge({
             placeholder="Type APPROVE before pull/push"
           />
         )}
-        <div className="grid gap-2 sm:grid-cols-3">
+        {onSaveLive && (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button
+              onClick={onSaveLive}
+              disabled={!isLiveModified || isSavingLive || disabled}
+              className="bg-emerald-500 text-slate-950 hover:bg-emerald-400"
+            >
+              <Upload className="mr-2 h-4 w-4" /> Save to live project
+            </Button>
+            <Button onClick={() => void pushToDevice()} disabled={disabled || isBusy || !localPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
+              <Download className="mr-2 h-4 w-4" /> Save file to computer
+            </Button>
+          </div>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
           <Button onClick={() => void connect()} disabled={isBusy} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
             <Plug className="mr-2 h-4 w-4" /> Connect
           </Button>
           <Button onClick={() => void pullFromDevice()} disabled={disabled || isBusy || !localPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
-            <Download className="mr-2 h-4 w-4" /> Pull
-          </Button>
-          <Button onClick={() => void pushToDevice()} disabled={disabled || isBusy || !localPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
-            <Upload className="mr-2 h-4 w-4" /> Push
+            <Download className="mr-2 h-4 w-4" /> Pull from computer
           </Button>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button onClick={() => void saveProjectToDevice()} disabled={isBusy || projectFiles.length === 0} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
-            <FolderDown className="mr-2 h-4 w-4" /> Save project to device
+            <FolderDown className="mr-2 h-4 w-4" /> Save project to computer
           </Button>
           <Button onClick={() => void importProjectFromDevice()} disabled={isBusy || !onImportProject || !localProjectPath.trim()} variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10">
             <FolderUp className="mr-2 h-4 w-4" /> Upload folder online
