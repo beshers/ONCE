@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, MonitorUp, Play, Plug, ShieldCheck, Terminal, Unplug } from "lucide-react";
+import { AlertTriangle, Download, MonitorUp, Play, Plug, ShieldCheck, Terminal, Unplug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ type RunResult = {
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
+const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -244,6 +245,23 @@ export default function LocalAgentPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+              <div className="text-sm font-semibold text-cyan-100">Install OCNE Desktop Agent</div>
+              <p className="mt-2 text-xs leading-5 text-cyan-100/80">
+                Download the Windows app, open the installer, then copy the agent URL and pairing token from the desktop app into this page.
+              </p>
+              <a
+                href={WINDOWS_AGENT_DOWNLOAD}
+                download="OCNE-Desktop-Agent-Setup.exe"
+                className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 sm:w-auto"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download Windows Agent
+              </a>
+              <div className="mt-3 text-[11px] text-cyan-100/70">
+                Windows may ask for confirmation because this early installer is not code-signed yet.
+              </div>
+            </div>
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
               Start OCNE Desktop Agent on the user's computer, then paste its local URL and pairing token here.
               <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run desktop-agent</pre>
