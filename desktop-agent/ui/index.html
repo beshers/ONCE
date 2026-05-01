@@ -137,6 +137,16 @@
       </section>
 
       <section class="panel">
+        <div class="label">App Settings</div>
+        <label>
+          <input type="checkbox" id="autoStart" />
+          <span>Start OCNE Desktop Agent automatically when I sign in.</span>
+        </label>
+        <div class="value" id="updates">Loading update status...</div>
+        <button id="checkUpdates">Check For Updates</button>
+      </section>
+
+      <section class="panel">
         <div class="label">Pairing Token</div>
         <code id="token">Loading...</code>
         <p>Paste this token into OCNE when the website asks to pair with the desktop agent.</p>
@@ -150,7 +160,7 @@
         </label>
         <p>When this is off, commands start inside the selected workspace folder.</p>
         <input id="workspace" type="text" />
-        <button id="save">Save Access Settings</button>
+        <button id="save">Save Settings</button>
       </section>
 
       <section class="panel warn">

@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const http = require("node:http");
 const { execFile } = require("node:child_process");
 const crypto = require("node:crypto");
@@ -16,12 +17,14 @@ const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:5173",
 ]);
 const CONFIG_PATH = path.join(app.getPath("userData"), "agent-config.json");
+const ICON_PATH = path.join(__dirname, "..", "build", process.platform === "win32" ? "icon.ico" : "icon.png");
 
 let mainWindow;
 let tray;
 let server;
 let config = loadConfig();
 let isQuitting = false;
+let updateStatus = "Updates have not been checked yet.";
 
 function loadConfig() {
   try {
@@ -29,6 +32,7 @@ function loadConfig() {
   } catch {
     return {
       allowAllFiles: false,
+      autoStart: true,
       workspace: os.homedir(),
       pairedAccount: null,
     };
@@ -52,11 +56,24 @@ function statusPayload() {
     hostname: os.hostname(),
     workspace: config.allowAllFiles ? filesystemRootLabel() : config.workspace,
     allowAllFiles: config.allowAllFiles,
+    autoStart: config.autoStart !== false,
     pairedAccount: config.pairedAccount,
+    updateStatus,
     tokenRequired: true,
     approvalRequired: false,
     allowedOrigins: Array.from(ALLOWED_ORIGINS),
   };
+}
+
+function appIcon() {
+  if (fs.existsSync(ICON_PATH)) {
+    return nativeImage.createFromPath(ICON_PATH);
+  }
+
+  return nativeImage.createFromDataURL(
+    "data:image/svg+xml;base64," +
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><circle cx="64" cy="64" r="56" fill="#0891b2"/><circle cx="64" cy="64" r="32" fill="none" stroke="#fff" stroke-width="10"/><path d="M42 86 86 42" stroke="#fff" stroke-width="12" stroke-linecap="round"/></svg>').toString("base64"),
+  );
 }
 
 function filesystemRootLabel() {
@@ -214,6 +231,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 520,
     title: "OCNE Desktop Agent",
+    icon: appIcon(),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -231,7 +249,7 @@ function createWindow() {
 }
 
 function createTray() {
-  tray = new Tray(process.platform === "win32" ? path.join(__dirname, "..", "ui", "tray.ico") : path.join(__dirname, "..", "ui", "tray.png"));
+  tray = new Tray(appIcon());
   tray.setToolTip("OCNE Desktop Agent");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open OCNE Desktop Agent", click: () => mainWindow?.show() },
@@ -239,6 +257,34 @@ function createTray() {
     { type: "separator" },
     { label: "Quit", click: () => app.quit() },
   ]));
+}
+
+function applyAutoStart() {
+  app.setLoginItemSettings({
+    openAtLogin: config.autoStart !== false,
+    openAsHidden: true,
+  });
+}
+
+function configureAutoUpdater() {
+  autoUpdater.autoDownload = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    updateStatus = "Checking for updates...";
+    updateWindow();
+  });
+  autoUpdater.on("update-available", () => {
+    updateStatus = "Update available. Download from the OCNE release page.";
+    updateWindow();
+  });
+  autoUpdater.on("update-not-available", () => {
+    updateStatus = "OCNE Desktop Agent is up to date.";
+    updateWindow();
+  });
+  autoUpdater.on("error", (error) => {
+    updateStatus = `Update check failed: ${error.message}`;
+    updateWindow();
+  });
 }
 
 function updateWindow() {
@@ -250,14 +296,28 @@ ipcMain.handle("agent:set-config", (_event, nextConfig) => {
   config = {
     ...config,
     allowAllFiles: Boolean(nextConfig.allowAllFiles),
+    autoStart: Boolean(nextConfig.autoStart),
     workspace: String(nextConfig.workspace || config.workspace || os.homedir()),
   };
   saveConfig();
+  applyAutoStart();
   updateWindow();
+  return { ...statusPayload(), token: TOKEN };
+});
+ipcMain.handle("agent:check-updates", async () => {
+  if (!app.isPackaged) {
+    updateStatus = "Update checks run from the installed app.";
+    updateWindow();
+    return { ...statusPayload(), token: TOKEN };
+  }
+
+  await autoUpdater.checkForUpdates();
   return { ...statusPayload(), token: TOKEN };
 });
 
 app.whenReady().then(() => {
+  applyAutoStart();
+  configureAutoUpdater();
   startServer();
   createWindow();
   try {

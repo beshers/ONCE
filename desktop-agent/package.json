@@ -8,8 +8,12 @@
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
+    "icons": "node scripts/generate-icons.cjs",
     "package:win": "electron-builder --win nsis",
     "package:mac": "electron-builder --mac dmg"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "electron": "^38.0.0",
@@ -21,18 +25,31 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "beshers",
+        "repo": "ONCE",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "src/**/*",
       "ui/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": "nsis",
       "signAndEditExecutable": false
     },
     "mac": {
+      "icon": "build/icon.png",
       "target": "dmg",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     }
   }
 }

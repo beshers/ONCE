@@ -32,6 +32,12 @@ The app will show:
 
 ## Build Installers
 
+Generate icons first:
+
+```powershell
+npm run icons
+```
+
 Windows:
 
 ```powershell
@@ -57,3 +63,19 @@ It accepts browser requests only from:
 Every command requires the pairing token. Commands run with the permissions of the local Windows/macOS user.
 
 For a production release, add code signing, auto-update, and a first-run pairing screen before publishing installers.
+
+## Production Release Notes
+
+The scaffold includes:
+
+- app icons generated into `build/`
+- Windows/macOS start-at-login setting
+- `electron-updater` wiring
+- GitHub Releases publish configuration
+- Windows/macOS signing configuration placeholders
+
+For a public build:
+
+- Windows: add a real code-signing certificate and remove `"signAndEditExecutable": false`.
+- macOS: build on macOS with an Apple Developer ID certificate and notarization credentials.
+- Auto-update: publish installer releases to GitHub Releases for `beshers/ONCE`.
