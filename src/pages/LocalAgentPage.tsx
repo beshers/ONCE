@@ -84,7 +84,11 @@ export default function LocalAgentPage() {
   const [approval, setApproval] = useState("");
   const [health, setHealth] = useState<AgentHealth | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
-  const [status, setStatus] = useState("Start the local agent, paste the token, then connect.");
+  const [status, setStatus] = useState(
+    stayConnected
+      ? "Restoring saved local agent connection..."
+      : "Start the local agent, paste the token, then connect.",
+  );
   const [isRunning, setIsRunning] = useState(false);
 
   const normalizedEndpoint = useMemo(() => endpoint.trim().replace(/\/+$/, ""), [endpoint]);
@@ -134,7 +138,7 @@ export default function LocalAgentPage() {
     try {
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
       setHealth(data);
-      if (options?.remember) {
+      if (options?.remember !== false) {
         setStayConnected(true);
       }
       setStatus(
@@ -244,10 +248,10 @@ export default function LocalAgentPage() {
                 onChange={(event) => setStayConnected(event.target.checked)}
                 className="mt-0.5"
               />
-              <span>Stay connected in this browser and auto-connect next time.</span>
+              <span>Stay connected in this browser and auto-connect next time. Disconnect turns this off.</span>
             </label>
             <div className="grid gap-2 sm:grid-cols-2">
-              <Button onClick={() => void connect({ remember: stayConnected })} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+              <Button onClick={() => void connect({ remember: true })} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400">
                 <Plug className="mr-2 h-4 w-4" />
                 {health ? "Reconnect" : "Connect to agent"}
               </Button>
