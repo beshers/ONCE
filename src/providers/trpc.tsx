@@ -6,13 +6,13 @@ import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 
 export const trpc = createTRPCReact<AppRouter>();
-export const enableWebSockets = import.meta.env.VITE_ENABLE_WS === "true";
+export const enableWebSockets = import.meta.env.VITE_ENABLE_WS !== "false";
 
 const queryClient = new QueryClient();
 const wsClient = createWSClient({
   url:
     import.meta.env.VITE_WS_URL ||
-    `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:3001`,
+    `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/trpc/ws`,
 });
 
 const trpcClient = trpc.createClient({

@@ -1,4 +1,5 @@
 import { applyWSSHandler } from "@trpc/server/adapters/ws";
+import type { Server } from "node:http";
 import { WebSocketServer } from "ws";
 import { appRouter } from "./router";
 import { createWSContext } from "./context";
@@ -7,13 +8,13 @@ const globalWsState = globalThis as typeof globalThis & {
   __phpBackendWss?: WebSocketServer;
 };
 
-export function startWSServer() {
+export function startWSServer(server?: Server) {
   if (globalWsState.__phpBackendWss) {
     return globalWsState.__phpBackendWss;
   }
 
   const port = parseInt(process.env.WS_PORT ?? "3001", 10);
-  const wss = new WebSocketServer({ port });
+  const wss = server ? new WebSocketServer({ noServer: true }) : new WebSocketServer({ port });
 
   const handler = applyWSSHandler({
     wss,
@@ -26,9 +27,23 @@ export function startWSServer() {
     },
   });
 
-  wss.on("listening", () => {
-    console.log(`[WS] tRPC WebSocket server listening on ws://localhost:${port}`);
-  });
+  if (server) {
+    server.on("upgrade", (request, socket, head) => {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      if (url.pathname !== "/api/trpc/ws") {
+        return;
+      }
+
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit("connection", ws, request);
+      });
+    });
+    console.log("[WS] tRPC WebSocket server attached at /api/trpc/ws");
+  } else {
+    wss.on("listening", () => {
+      console.log(`[WS] tRPC WebSocket server listening on ws://localhost:${port}`);
+    });
+  }
 
   wss.on("error", (err: unknown) => {
     console.error("[WS] WebSocket server error:", err);

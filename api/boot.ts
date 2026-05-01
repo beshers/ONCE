@@ -21,7 +21,7 @@ try {
   );
 }
 
-if (process.env.ENABLE_WS !== "false") {
+if (!env.isProduction && process.env.ENABLE_WS !== "false") {
   startWSServer();
 }
 
@@ -46,7 +46,10 @@ if (env.isProduction) {
   serveStaticFiles(app);
 
   const port = parseInt(process.env.PORT || "3000");
-  serve({ fetch: app.fetch, port }, () => {
+  const server = serve({ fetch: app.fetch, port }, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
+  if (process.env.ENABLE_WS !== "false") {
+    startWSServer(server);
+  }
 }

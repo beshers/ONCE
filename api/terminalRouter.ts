@@ -5,20 +5,30 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
-const SHELL_PATHS = {
-  powershell: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-  cmd: "C:\\Windows\\System32\\cmd.exe",
+const SHELL_CANDIDATES = {
+  powershell: [
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+    "/usr/bin/pwsh",
+    "/opt/microsoft/powershell/7/pwsh",
+  ],
+  cmd: ["C:\\Windows\\System32\\cmd.exe"],
+  bash: ["/bin/bash", "/usr/bin/bash"],
+  sh: ["/bin/sh", "/usr/bin/sh"],
 } as const;
 
-const SHELL_ARGS: Record<keyof typeof SHELL_PATHS, string[]> = {
+const SHELL_ARGS: Record<ShellType, string[]> = {
   powershell: ["-NoLogo", "-NoExit", "-NonInteractive"],
   cmd: [],
+  bash: ["--noprofile", "--norc", "-i"],
+  sh: ["-i"],
 };
 
-type ShellType = keyof typeof SHELL_PATHS;
+type ShellType = keyof typeof SHELL_CANDIDATES;
 
 interface TerminalSession {
   id: string;
+  userId: string;
   shell: ShellType;
   process: ChildProcessWithoutNullStreams;
   outputBuffer: string[];
@@ -28,23 +38,30 @@ interface TerminalSession {
 
 const sessions = new Map<string, TerminalSession>();
 
+function resolveShell(shell: ShellType) {
+  return SHELL_CANDIDATES[shell].find((candidate) => existsSync(candidate));
+}
+
 export const terminalRouter = createRouter({
   checkShells: authedQuery.query(() => {
     return {
-      powershell: existsSync(SHELL_PATHS.powershell),
-      cmd: existsSync(SHELL_PATHS.cmd),
+      powershell: Boolean(resolveShell("powershell")),
+      cmd: Boolean(resolveShell("cmd")),
+      bash: Boolean(resolveShell("bash")),
+      sh: Boolean(resolveShell("sh")),
+      platform: process.platform,
     };
   }),
 
   createSession: authedQuery
-    .input(z.object({ shell: z.enum(["powershell", "cmd"]) }))
-    .mutation(({ input }) => {
+    .input(z.object({ shell: z.enum(["powershell", "cmd", "bash", "sh"]), allowComputerAccess: z.literal(true) }))
+    .mutation(({ ctx, input }) => {
       const id = randomUUID();
-      const shellPath = SHELL_PATHS[input.shell];
+      const shellPath = resolveShell(input.shell);
       const args = SHELL_ARGS[input.shell];
 
-      if (!existsSync(shellPath)) {
-        throw new Error(`Shell not found at: ${shellPath}`);
+      if (!shellPath) {
+        throw new Error(`${input.shell} is not available on this server.`);
       }
 
       const proc = spawn(shellPath, args, {
@@ -56,6 +73,7 @@ export const terminalRouter = createRouter({
 
       const session: TerminalSession = {
         id,
+        userId: String(ctx.user.id),
         shell: input.shell,
         process: proc,
         outputBuffer: [],
@@ -100,13 +118,17 @@ export const terminalRouter = createRouter({
       z.object({
         sessionId: z.string(),
         input: z.string(),
+        allowComputerAccess: z.literal(true),
       }),
     )
-    .mutation(({ input }) => {
+    .mutation(({ ctx, input }) => {
       const session = sessions.get(input.sessionId);
 
       if (!session) {
         return { success: false, error: "Session not found" };
+      }
+      if (session.userId !== String(ctx.user.id)) {
+        return { success: false, error: "You do not own this terminal session" };
       }
       if (!session.alive) {
         return { success: false, error: "Session has exited" };
@@ -127,10 +149,10 @@ export const terminalRouter = createRouter({
         fromIndex: z.number().int().min(0).default(0),
       }),
     )
-    .query(({ input }) => {
+    .query(({ ctx, input }) => {
       const session = sessions.get(input.sessionId);
 
-      if (!session) {
+      if (!session || session.userId !== String(ctx.user.id)) {
         return { chunks: [], totalChunks: 0, alive: false, notFound: true };
       }
 
@@ -144,8 +166,8 @@ export const terminalRouter = createRouter({
       };
     }),
 
-  listSessions: authedQuery.query(() => {
-    return Array.from(sessions.values()).map((s) => ({
+  listSessions: authedQuery.query(({ ctx }) => {
+    return Array.from(sessions.values()).filter((s) => s.userId === String(ctx.user.id)).map((s) => ({
       id: s.id,
       shell: s.shell,
       createdAt: s.createdAt,
@@ -156,10 +178,10 @@ export const terminalRouter = createRouter({
 
   killSession: authedQuery
     .input(z.object({ sessionId: z.string() }))
-    .mutation(({ input }) => {
+    .mutation(({ ctx, input }) => {
       const session = sessions.get(input.sessionId);
 
-      if (session) {
+      if (session && session.userId === String(ctx.user.id)) {
         try {
           session.process.kill("SIGTERM");
         } catch {
