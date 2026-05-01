@@ -137,13 +137,13 @@ export default function Login() {
         <section className="rounded-2xl border border-white/10 bg-[#0d1220] p-6 shadow-2xl shadow-black/30 sm:p-8">
           <div className="mb-8">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-medium text-cyan-200">
-              <Users className="h-3.5 w-3.5" /> OCNE developer workspace
+              <Users className="h-3.5 w-3.5" /> OCNE - Online Network Code Editor
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Code, collaborate, and run your projects from one place.
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">
-              OCNE was created so users can build websites and apps, organize project files, work live with other people, connect a real computer terminal, and bring projects online when they are ready to share.
+              OCNE means Online Network Code Editor. It was created so users can build websites and apps, organize project files, work live with other people, connect a real computer terminal, and bring projects online when they are ready to share.
             </p>
           </div>
 
