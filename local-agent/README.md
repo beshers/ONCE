@@ -16,8 +16,8 @@ The agent prints:
 - token
 - workspace folder
 
-Open OCNE, go to `Local Agent`, paste the token, connect, then run commands. Every command must be approved in the agent terminal before it runs.
-By default, approval happens in the website by typing `APPROVE` before sending the command.
+Open OCNE, go to `Local Agent`, paste the token, connect, then run commands.
+By default, approval happens in the website by typing `APPROVE` before sending the command. Approval clears after every run.
 
 For the older terminal-window approval prompt, start the agent with:
 

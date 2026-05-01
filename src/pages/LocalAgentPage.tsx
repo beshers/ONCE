@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { MonitorUp, Play, Plug, ShieldCheck, Terminal } from "lucide-react";
+import { AlertTriangle, MonitorUp, Play, Plug, ShieldCheck, Terminal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,11 +10,14 @@ type AgentHealth = {
   ok: boolean;
   name: string;
   version: string;
+  port?: number;
+  url?: string;
   platform: string;
   arch: string;
   hostname: string;
   workspace: string;
   approvalMode?: string;
+  tokenLength?: number;
 };
 
 type RunResult = {
@@ -26,14 +29,40 @@ type RunResult = {
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
+const EXPECTED_AGENT_VERSION = "0.3.0";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
+  let data: any;
   try {
-    return JSON.parse(text);
+    data = JSON.parse(text);
   } catch {
     throw new Error(text || `Request failed with status ${response.status}`);
   }
+
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed with status ${response.status}`);
+    (error as Error & { status?: number; code?: string }).status = response.status;
+    (error as Error & { status?: number; code?: string }).code = data.code;
+    throw error;
+  }
+
+  return data;
+}
+
+function explainError(error: unknown) {
+  if (error instanceof TypeError) {
+    return "Connection refused. Is the OCNE Local Agent running on this endpoint?";
+  }
+
+  if (error instanceof Error) {
+    const status = (error as Error & { status?: number }).status;
+    if (status === 401) return "Invalid token. Copy the exact token printed by the current agent window.";
+    if (status === 403) return "Approval required. Type APPROVE before running the command.";
+    return error.message;
+  }
+
+  return "Unknown Local Agent error.";
 }
 
 export default function LocalAgentPage() {
@@ -46,61 +75,64 @@ export default function LocalAgentPage() {
   const [status, setStatus] = useState("Start the local agent, paste the token, then connect.");
   const [isRunning, setIsRunning] = useState(false);
 
-  const normalizedEndpoint = useMemo(() => endpoint.replace(/\/+$/, ""), [endpoint]);
+  const normalizedEndpoint = useMemo(() => endpoint.trim().replace(/\/+$/, ""), [endpoint]);
+  const tokenValue = token.trim();
+  const needsWebsiteApproval = health?.approvalMode !== "terminal";
+  const versionIsCurrent = health?.version === EXPECTED_AGENT_VERSION;
 
   useEffect(() => {
-    localStorage.setItem("ocne-agent-endpoint", endpoint);
+    localStorage.setItem("ocne-agent-endpoint", endpoint.trim());
   }, [endpoint]);
 
   useEffect(() => {
-    localStorage.setItem("ocne-agent-token", token);
+    localStorage.setItem("ocne-agent-token", token.trim());
   }, [token]);
 
   async function connect() {
     setStatus("Connecting to local agent...");
     setResult(null);
+    setHealth(null);
     try {
-      const response = await fetch(`${normalizedEndpoint}/health`);
-      const data = await readJsonResponse(response);
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Agent did not respond correctly.");
-      }
+      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
       setHealth(data);
-      setStatus(data.approvalMode === "terminal" ? "Connected. Commands require approval in the local agent window." : "Connected. Type APPROVE in the website before running a command.");
+      setStatus(
+        data.version === EXPECTED_AGENT_VERSION
+          ? "Connected. Type APPROVE in the website before running a command."
+          : `Connected to agent ${data.version}. Restart the agent to use ${EXPECTED_AGENT_VERSION}.`,
+      );
     } catch (error) {
       setHealth(null);
-      setStatus(error instanceof Error ? error.message : "Could not connect to local agent.");
+      setStatus(explainError(error));
     }
   }
 
   async function runCommand() {
-    if (!token.trim()) {
+    if (!tokenValue) {
       setStatus("Paste the local agent token first.");
       return;
     }
-    if (health?.approvalMode !== "terminal" && approval.trim().toUpperCase() !== "APPROVE") {
+    if (needsWebsiteApproval && approval.trim().toUpperCase() !== "APPROVE") {
       setStatus("Type APPROVE in the website approval box before sending the command.");
       return;
     }
 
     setIsRunning(true);
-    setStatus(health?.approvalMode === "terminal" ? "Waiting for approval on the local computer..." : "Running approved command...");
+    setStatus(needsWebsiteApproval ? "Running approved command..." : "Waiting for approval in the local agent window...");
     setResult(null);
     try {
-      const response = await fetch(`${normalizedEndpoint}/run`, {
+      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/run`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-ocne-agent-token": token.trim(),
+          "x-ocne-agent-token": tokenValue,
         },
-        body: JSON.stringify({ command, approval }),
-      });
-      const data = await readJsonResponse(response);
+        body: JSON.stringify({ command, approval: approval.trim() }),
+      }));
       setResult(data);
       setStatus(data.ok ? "Command finished." : data.error || "Command failed.");
       setApproval("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Command request failed.");
+      setStatus(explainError(error));
     } finally {
       setIsRunning(false);
     }
@@ -108,12 +140,12 @@ export default function LocalAgentPage() {
 
   const quickCommands = [
     "python --version",
-    "python -c \"print('OCNE local agent works')\"",
+    "git --version",
     "node --version",
     "npm --version",
+    "python -m pip install --user rich",
     "dir",
     "Get-ChildItem",
-    "winget install -e --id Python.Python.3.12",
   ];
 
   return (
@@ -126,7 +158,7 @@ export default function LocalAgentPage() {
           </div>
           <h1 className="mt-2 text-3xl font-semibold text-white">OCNE Local Agent</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Run approved commands on your own computer through a local agent. Type approval in the website before anything runs.
+            Connect to the local agent running on this computer. Commands require a valid token and explicit approval before they run.
           </p>
         </div>
         <Badge className={health ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}>
@@ -146,7 +178,7 @@ export default function LocalAgentPage() {
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
               Start the local agent on the user's computer:
               <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run agent</pre>
-              Copy the printed token into this page.
+              Copy the current endpoint and token from that agent window.
             </div>
             <Input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} className="border-white/10 bg-black/30 text-white" />
             <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste local agent token" className="border-white/10 bg-black/30 text-white" />
@@ -156,11 +188,24 @@ export default function LocalAgentPage() {
             </Button>
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{status}</div>
             {health && (
-              <div className="grid gap-2 text-xs text-slate-300">
+              <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                <div>Agent: {health.name}</div>
+                <div className={versionIsCurrent ? "text-emerald-300" : "text-amber-200"}>
+                  Version: {health.version} {versionIsCurrent ? "(current)" : `(expected ${EXPECTED_AGENT_VERSION})`}
+                </div>
+                <div>URL: {health.url || normalizedEndpoint}</div>
+                <div>Port: {health.port || "unknown"}</div>
                 <div>Computer: {health.hostname}</div>
                 <div>Platform: {health.platform} / {health.arch}</div>
                 <div>Approval: {health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
+                <div>Token: required{health.tokenLength ? `, ${health.tokenLength} characters` : ""}</div>
                 <div className="break-all">Workspace: {health.workspace}</div>
+              </div>
+            )}
+            {health && !versionIsCurrent && (
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
+                <AlertTriangle className="mr-2 inline h-4 w-4" />
+                This looks like an old agent. Close old agent windows and run <code>npm run agent</code> again.
               </div>
             )}
           </CardContent>
@@ -177,12 +222,12 @@ export default function LocalAgentPage() {
             <div className="flex flex-wrap gap-2">
               {quickCommands.map((item) => (
                 <Button key={item} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200" onClick={() => setCommand(item)}>
-                  {item.length > 30 ? `${item.slice(0, 30)}...` : item}
+                  {item.length > 34 ? `${item.slice(0, 34)}...` : item}
                 </Button>
               ))}
             </div>
             <Textarea value={command} onChange={(event) => setCommand(event.target.value)} className="min-h-28 border-white/10 bg-black/30 font-mono text-white" />
-            {health?.approvalMode !== "terminal" && (
+            {needsWebsiteApproval && (
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3">
                 <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">Website approval</div>
                 <Input
@@ -195,7 +240,7 @@ export default function LocalAgentPage() {
             )}
             <Button
               onClick={() => void runCommand()}
-              disabled={isRunning || !health || !command.trim() || (health.approvalMode !== "terminal" && approval.trim().toUpperCase() !== "APPROVE")}
+              disabled={isRunning || !health || !command.trim() || (needsWebsiteApproval && approval.trim().toUpperCase() !== "APPROVE")}
               className="w-full bg-white text-black hover:bg-slate-200"
             >
               <Play className="mr-2 h-4 w-4" />
@@ -205,7 +250,7 @@ export default function LocalAgentPage() {
               <ShieldCheck className="mr-2 inline h-4 w-4" />
               {health?.approvalMode === "terminal"
                 ? "The command will not run until the user types approval in the local agent window."
-                : "The command will not run until APPROVE is typed in this website and the local token is valid."}
+                : "The command will not run until APPROVE is typed in this website and the token is valid. Approval resets after each run."}
             </div>
             {result && (
               <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">
@@ -213,7 +258,7 @@ export default function LocalAgentPage() {
                   Exit code {result.code ?? 0} - {result.ok ? "success" : "failed"}
                 </div>
                 <pre className="max-h-96 overflow-auto whitespace-pre-wrap p-3 text-xs text-slate-100">
-                  {[result.stdout, result.stderr, result.error].filter(Boolean).join("\n")}
+                  {[result.stdout, result.stderr, result.error].filter(Boolean).join("\n") || "(no output)"}
                 </pre>
               </div>
             )}
