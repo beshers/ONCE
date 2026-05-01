@@ -36,6 +36,18 @@ npm run agent:no-token
 
 The website will still require `APPROVE` before each command. Do not use no-token mode on a shared or untrusted computer.
 
+## Direct Mode
+
+For the normal terminal feeling, where the user starts the agent once and the website can run commands without typing `APPROVE` each time:
+
+```powershell
+npm run agent:direct
+```
+
+Direct mode runs commands with the same file permissions as the local Windows user. That means commands can read and change files anywhere that Windows user can access, including other drives when the command uses an absolute path like `D:\folder`.
+
+Use this only when the user trusts the connected OCNE website session.
+
 ## Allow Only One OCNE User
 
 Every command request includes the signed-in OCNE user's id, email, and display name. The agent logs that identity before it runs the command.

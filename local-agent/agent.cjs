@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 function cleanEnv(name, fallback) {
   const value = process.env[name];
@@ -19,6 +19,7 @@ const PORT = Number(cleanEnv("OCNE_AGENT_PORT", "48731"));
 const ALLOW_NO_TOKEN = cleanEnv("OCNE_AGENT_NO_TOKEN", "false").toLowerCase() === "true";
 const TOKEN = ALLOW_NO_TOKEN ? "" : cleanEnv("OCNE_AGENT_TOKEN", crypto.randomBytes(18).toString("hex"));
 const WORKSPACE = path.resolve(cleanEnv("OCNE_AGENT_WORKSPACE", process.cwd()));
+const REQUIRE_APPROVAL = cleanEnv("OCNE_AGENT_REQUIRE_APPROVAL", "true").toLowerCase() !== "false";
 const APPROVAL_MODE = cleanEnv("OCNE_AGENT_APPROVAL", "web").toLowerCase() === "terminal" ? "terminal" : "web";
 const ALLOWED_USER_ID = cleanEnv("OCNE_AGENT_ALLOWED_USER_ID", "");
 const ALLOWED_USER_EMAIL = cleanEnv("OCNE_AGENT_ALLOWED_USER_EMAIL", "").toLowerCase();
@@ -207,6 +208,7 @@ function agentHealth() {
     hostname: os.hostname(),
     workspace: WORKSPACE,
     approvalMode: APPROVAL_MODE,
+    approvalRequired: REQUIRE_APPROVAL,
     tokenRequired: !ALLOW_NO_TOKEN,
     tokenLength: TOKEN.length,
     identificationRequired: Boolean(ALLOWED_USER_ID || ALLOWED_USER_EMAIL),
@@ -246,7 +248,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const approved = APPROVAL_MODE === "terminal" ? await askApproval(command) : hasWebApproval(body);
+      const approved = !REQUIRE_APPROVAL || (APPROVAL_MODE === "terminal" ? await askApproval(command) : hasWebApproval(body));
       if (!approved) {
         sendJson(res, 403, {
           ok: false,
@@ -300,15 +302,20 @@ function printBanner() {
   console.log(`URL:       http://${HOST}:${PORT}`);
   console.log(ALLOW_NO_TOKEN ? "Token:     disabled for local testing" : `Token:     ${TOKEN}`);
   console.log(`Workspace: ${WORKSPACE}`);
-  console.log(`Approval:  ${APPROVAL_MODE === "terminal" ? "terminal prompt" : "website APPROVE field"}`);
+  console.log(`Approval:  ${REQUIRE_APPROVAL ? (APPROVAL_MODE === "terminal" ? "terminal prompt" : "website APPROVE field") : "disabled, commands run directly"}`);
   console.log(ALLOWED_USER_ID || ALLOWED_USER_EMAIL
     ? "Identity:  restricted to the configured OCNE user"
     : "Identity:  requester is logged, no user restriction configured");
   if (ALLOW_NO_TOKEN) {
     console.log("WARNING:  No-token mode is for local testing only.");
   }
+  if (!REQUIRE_APPROVAL) {
+    console.log("WARNING:  Direct mode runs website commands without per-command approval.");
+  }
   console.log("Keep this window open while using OCNE Agent.");
-  console.log(APPROVAL_MODE === "terminal"
+  console.log(!REQUIRE_APPROVAL
+    ? "Commands run directly after the website connects."
+    : APPROVAL_MODE === "terminal"
     ? "Commands require approval here before they run."
     : "Commands require APPROVE in the website before they run.");
   console.log("==============================================");

@@ -18,6 +18,7 @@ type AgentHealth = {
   hostname: string;
   workspace: string;
   approvalMode?: string;
+  approvalRequired?: boolean;
   tokenRequired?: boolean;
   tokenLength?: number;
   identificationRequired?: boolean;
@@ -39,7 +40,7 @@ type RunResult = {
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
-const EXPECTED_AGENT_VERSION = "0.4.0";
+const EXPECTED_AGENT_VERSION = "0.5.0";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -94,7 +95,8 @@ export default function LocalAgentPage() {
   const normalizedEndpoint = useMemo(() => endpoint.trim().replace(/\/+$/, ""), [endpoint]);
   const tokenValue = token.trim();
   const tokenRequired = health?.tokenRequired !== false;
-  const needsWebsiteApproval = health?.approvalMode !== "terminal";
+  const approvalRequired = health?.approvalRequired !== false;
+  const needsWebsiteApproval = approvalRequired && health?.approvalMode !== "terminal";
   const versionIsCurrent = health?.version === EXPECTED_AGENT_VERSION;
   const requester = useMemo(() => {
     const name =
@@ -143,7 +145,9 @@ export default function LocalAgentPage() {
       }
       setStatus(
         data.version === EXPECTED_AGENT_VERSION
-          ? "Connected. Type APPROVE in the website before running a command."
+          ? data.approvalRequired === false
+            ? "Connected. Direct mode is enabled, commands run without APPROVE."
+            : "Connected. Type APPROVE in the website before running a command."
           : `Connected to agent ${data.version}. Restart the agent to use ${EXPECTED_AGENT_VERSION}.`,
       );
     } catch (error) {
@@ -171,7 +175,13 @@ export default function LocalAgentPage() {
     }
 
     setIsRunning(true);
-    setStatus(needsWebsiteApproval ? "Running approved command..." : "Waiting for approval in the local agent window...");
+    setStatus(
+      !approvalRequired
+        ? "Running command..."
+        : needsWebsiteApproval
+          ? "Running approved command..."
+          : "Waiting for approval in the local agent window...",
+    );
     setResult(null);
     try {
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/run`, {
@@ -234,8 +244,8 @@ export default function LocalAgentPage() {
           <CardContent className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
               Start the local agent on the user's computer:
-              <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run agent</pre>
-              Copy the current endpoint and token from that agent window.
+              <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run agent:direct</pre>
+              Direct mode runs commands without the website APPROVE box after the user connects.
             </div>
             <Input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} className="border-white/10 bg-black/30 text-white" />
             {tokenRequired && (
@@ -277,7 +287,7 @@ export default function LocalAgentPage() {
                 <div>Port: {health.port || "unknown"}</div>
                 <div>Computer: {health.hostname}</div>
                 <div>Platform: {health.platform} / {health.arch}</div>
-                <div>Approval: {health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
+                <div>Approval: {health.approvalRequired === false ? "direct mode, no per-command approval" : health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
                 <div>Token: {health.tokenRequired === false ? "disabled for local testing" : `required${health.tokenLength ? `, ${health.tokenLength} characters` : ""}`}</div>
                 <div>
                   Identity: {health.identificationRequired
@@ -333,7 +343,9 @@ export default function LocalAgentPage() {
             </Button>
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-xs text-cyan-100">
               <ShieldCheck className="mr-2 inline h-4 w-4" />
-              {health?.approvalMode === "terminal"
+              {health?.approvalRequired === false
+                ? "Direct mode is enabled. Commands run immediately after connection, using the local user's file permissions."
+                : health?.approvalMode === "terminal"
                 ? "The command will not run until the user types approval in the local agent window."
                 : "The command sends your OCNE identity, then waits for APPROVE and a valid token when token mode is enabled. Approval resets after each run."}
             </div>
