@@ -294,6 +294,32 @@ export default function ChatPage() {
     },
   });
 
+  trpc.chat.onIncomingCall.useSubscription(undefined, {
+    enabled: enableWebSockets && Boolean(user?.id),
+    onData: (event) => {
+      if (callState !== "idle") return;
+      if (processedSignalIdsRef.current.has(event.messageId)) return;
+      const meta = event.metadata as EventMeta;
+      if (meta?.kind !== "call" || meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return;
+
+      processedSignalIdsRef.current.add(event.messageId);
+      setActiveRoom("global");
+      setDirectRecipientId(String(event.senderId));
+      setIncomingCall({
+        callId: meta.callId,
+        mode: meta.mode === "video" ? "video" : "voice",
+        fromUserId: String(event.senderId),
+        offer: meta.signalData as RTCSessionDescriptionInit,
+      });
+      setCallMode(meta.mode === "video" ? "video" : "voice");
+      setCallState("incoming");
+      setActionError(`${meta.mode === "video" ? "Video" : "Voice"} call incoming.`);
+      void utils.chat.messages.invalidate();
+      void utils.chat.directThreads.invalidate();
+      void utils.notification.unread.invalidate();
+    },
+  });
+
   const currentDirectUser = useMemo(() => {
     if (!directRecipientId) return null;
     return (

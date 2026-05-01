@@ -117,11 +117,20 @@ type LiveRoomEvent = {
   createdBy: string;
 };
 
+type LiveIncomingCallEvent = {
+  messageId: number;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  metadata: Record<string, unknown>;
+};
+
 type ChatEventMap = {
   message: LiveMessageEvent;
   typing: LiveTypingEvent;
   presence: LivePresenceEvent;
   roomCreated: LiveRoomEvent;
+  incomingCall: LiveIncomingCallEvent;
 };
 
 const chatGlobal = globalThis as typeof globalThis & {
@@ -732,6 +741,15 @@ export const chatRouter = createRouter({
           isCallOffer ? "system" : "mention",
           isCallOffer ? "chat_call" : "chat_dm",
         );
+        if (isCallOffer) {
+          emitChatEvent("incomingCall", {
+            messageId: id,
+            senderId: String(ctx.user.id),
+            receiverId: String(input.receiverId),
+            content: input.content,
+            metadata: metadata || {},
+          });
+        }
       }
 
       emitChatEvent("message", {
@@ -833,6 +851,18 @@ export const chatRouter = createRouter({
       const handler = (event: LiveRoomEvent) => emit.next(event);
       chatEvents.on("roomCreated", handler);
       return () => chatEvents.off("roomCreated", handler);
+    }),
+  ),
+
+  onIncomingCall: authedQuery.subscription(({ ctx }) =>
+    observable<LiveIncomingCallEvent>((emit) => {
+      const handler = (event: LiveIncomingCallEvent) => {
+        if (String(event.receiverId) === String(ctx.user.id)) {
+          emit.next(event);
+        }
+      };
+      chatEvents.on("incomingCall", handler);
+      return () => chatEvents.off("incomingCall", handler);
     }),
   ),
 });
