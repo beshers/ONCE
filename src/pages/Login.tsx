@@ -160,7 +160,7 @@ export default function Login() {
           <div className="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
             <div className="text-sm font-semibold text-emerald-100">Created by Busher Smakie</div>
             <p className="mt-2 text-xs leading-5 text-emerald-50/80">
-              I come from Syria, Aleppo. I learned information technology through apps and website development, and I built OCNE to help people learn, create, and collaborate on real projects.
+              Busher Smakie is a developer from Aleppo, Syria. He learned information technology through apps and website development, and his goal with OCNE is to help people learn, create, collaborate, and turn real project ideas into working websites and applications.
             </p>
           </div>
         </section>
