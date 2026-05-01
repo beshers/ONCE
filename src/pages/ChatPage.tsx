@@ -154,6 +154,10 @@ export default function ChatPage() {
   const pendingScreenTrackRef = useRef<MediaStreamTrack | null>(null);
   const lastNotifiedIdRef = useRef<number | null>(null);
   const typingClearRef = useRef<number | null>(null);
+  const callModeRef = useRef<"voice" | "video">("voice");
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const [hasLocalStream, setHasLocalStream] = useState(false);
+  const [hasRemoteStream, setHasRemoteStream] = useState(false);
 
   const { data: rooms, refetch: refetchRooms } = trpc.chat.rooms.useQuery();
   const { data: publicRooms, refetch: refetchPublicRooms } = trpc.chat.publicRooms.useQuery();
@@ -303,6 +307,7 @@ export default function ChatPage() {
       if (meta?.kind !== "call" || meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return;
 
       processedSignalIdsRef.current.add(event.messageId);
+      activeCallIdRef.current = meta.callId;
       setActiveRoom("global");
       setDirectRecipientId(String(event.senderId));
       setIncomingCall({
@@ -312,6 +317,7 @@ export default function ChatPage() {
         offer: meta.signalData as RTCSessionDescriptionInit,
       });
       setCallMode(meta.mode === "video" ? "video" : "voice");
+      callModeRef.current = meta.mode === "video" ? "video" : "voice";
       setCallState("incoming");
       setActionError(`${meta.mode === "video" ? "Video" : "Voice"} call incoming.`);
       void utils.chat.messages.invalidate();
@@ -508,18 +514,6 @@ export default function ChatPage() {
   }, [browserNotificationsEnabled, notificationUnread]);
 
   useEffect(() => {
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
-    }
-  }, [callState, directRecipientId]);
-
-  useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStreamRef.current;
-    }
-  }, [callState, directRecipientId]);
-
-  useEffect(() => {
     setLastMessageId(0);
     setMessageText("");
     setMessageSearch("");
@@ -570,45 +564,57 @@ export default function ChatPage() {
         !processedSignalIdsRef.current.has(entry.message.id),
     );
 
-    for (const entry of relevantSignals) {
-      processedSignalIdsRef.current.add(entry.message.id);
-      const meta = entry.meta;
-      if (!meta?.action || !meta.callId) continue;
-      if (String(entry.message.senderId) === String(user?.id)) continue;
-      if (meta.targetUserId && String(meta.targetUserId) !== String(user?.id)) continue;
+    void (async () => {
+      for (const entry of relevantSignals) {
+        processedSignalIdsRef.current.add(entry.message.id);
+        const meta = entry.meta;
+        if (!meta?.action || !meta.callId) continue;
+        if (String(entry.message.senderId) === String(user?.id)) continue;
+        if (meta.targetUserId && String(meta.targetUserId) !== String(user?.id)) continue;
 
-      if (meta.action === "offer" && meta.signalData && meta.mode && callState === "idle") {
-        setIncomingCall({
-          callId: meta.callId,
-          mode: meta.mode === "video" ? "video" : "voice",
-          fromUserId: String(entry.message.senderId),
-          offer: meta.signalData as RTCSessionDescriptionInit,
-        });
-        setCallMode(meta.mode === "video" ? "video" : "voice");
-        setCallState("incoming");
-      }
+        if (meta.action === "offer" && meta.signalData && meta.mode && callState === "idle") {
+          activeCallIdRef.current = meta.callId;
+          setIncomingCall({
+            callId: meta.callId,
+            mode: meta.mode === "video" ? "video" : "voice",
+            fromUserId: String(entry.message.senderId),
+            offer: meta.signalData as RTCSessionDescriptionInit,
+          });
+          setCallMode(meta.mode === "video" ? "video" : "voice");
+          callModeRef.current = meta.mode === "video" ? "video" : "voice";
+          setCallState("incoming");
+        }
 
-      if (meta.action === "answer" && meta.signalData && activeCallIdRef.current === meta.callId) {
-        void peerConnectionRef.current?.setRemoteDescription(
-          new RTCSessionDescription(meta.signalData as RTCSessionDescriptionInit),
-        );
-        setCallState("connecting");
-      }
+        if (meta.action === "answer" && meta.signalData && activeCallIdRef.current === meta.callId) {
+          await peerConnectionRef.current?.setRemoteDescription(
+            new RTCSessionDescription(meta.signalData as RTCSessionDescriptionInit),
+          );
+          for (const candidate of pendingIceCandidatesRef.current) {
+            await peerConnectionRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
+          }
+          pendingIceCandidatesRef.current = [];
+          setCallState("connecting");
+        }
 
-      if (meta.action === "ice" && meta.signalData && activeCallIdRef.current === meta.callId) {
-        void peerConnectionRef.current?.addIceCandidate(
-          new RTCIceCandidate(meta.signalData as RTCIceCandidateInit),
-        );
-      }
+        if (meta.action === "ice" && meta.signalData && activeCallIdRef.current === meta.callId) {
+          if (peerConnectionRef.current?.remoteDescription) {
+            await peerConnectionRef.current.addIceCandidate(
+              new RTCIceCandidate(meta.signalData as RTCIceCandidateInit),
+            );
+          } else {
+            pendingIceCandidatesRef.current.push(meta.signalData as RTCIceCandidateInit);
+          }
+        }
 
-      if (meta.action === "reject" && activeCallIdRef.current === meta.callId) {
-        void cleanupActiveCall(false);
-      }
+        if (meta.action === "reject" && activeCallIdRef.current === meta.callId) {
+          await cleanupActiveCall(false);
+        }
 
-      if (meta.action === "end" && activeCallIdRef.current === meta.callId) {
-        void cleanupActiveCall(false);
+        if (meta.action === "end" && activeCallIdRef.current === meta.callId) {
+          await cleanupActiveCall(false);
+        }
       }
-    }
+    })();
   }, [callState, directRecipientId, enrichedMessages, user?.id]);
 
   async function ensureLocalStream(mode: "voice" | "video") {
@@ -638,6 +644,7 @@ export default function ChatPage() {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream;
     }
+    setHasLocalStream(true);
     setIsMuted(false);
     setIsCameraOff(mode === "voice");
     return stream;
@@ -649,19 +656,22 @@ export default function ChatPage() {
     }
 
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
     });
 
     pc.onicecandidate = (event) => {
       if (!event.candidate || !directRecipientId) return;
-      void sendStructuredMessage(
+      void sendWebRTCSignal(
         "ICE candidate exchanged for direct call.",
         {
           kind: "call",
           title: "Call signal",
           action: "ice",
           callId,
-          mode: callMode,
+          mode: callModeRef.current,
           targetUserId: directRecipientId,
           signalData: event.candidate.toJSON(),
         },
@@ -678,6 +688,7 @@ export default function ChatPage() {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
+      setHasRemoteStream(true);
       setCallState("connected");
     };
 
@@ -696,18 +707,19 @@ export default function ChatPage() {
 
   async function cleanupActiveCall(sendEndSignal: boolean) {
     if (sendEndSignal && directRecipientId && activeCallIdRef.current) {
-      await sendStructuredMessage("Call ended.", {
+      await sendWebRTCSignal("Call ended.", {
         kind: "call",
         title: "Call ended",
         action: "end",
         callId: activeCallIdRef.current,
-        mode: callMode,
+        mode: callModeRef.current,
         targetUserId: directRecipientId,
       });
     }
 
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
+    pendingIceCandidatesRef.current = [];
 
     pendingScreenTrackRef.current?.stop();
     pendingScreenTrackRef.current = null;
@@ -725,6 +737,8 @@ export default function ChatPage() {
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
 
+    setHasLocalStream(false);
+    setHasRemoteStream(false);
     setIncomingCall(null);
     setIsSharingScreen(false);
     setIsMuted(false);
@@ -745,6 +759,7 @@ export default function ChatPage() {
     const callId = crypto.randomUUID();
     activeCallIdRef.current = callId;
     setCallMode(mode);
+    callModeRef.current = mode;
     setCallState("outgoing");
 
     const stream = await ensureLocalStream(mode);
@@ -754,7 +769,7 @@ export default function ChatPage() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    await sendStructuredMessage(
+    await sendWebRTCSignal(
       `${mode} call invitation sent.`,
       {
         kind: "call",
@@ -774,6 +789,7 @@ export default function ChatPage() {
       setActionError(null);
       activeCallIdRef.current = incomingCall.callId;
       setCallMode(incomingCall.mode);
+      callModeRef.current = incomingCall.mode;
       setCallState("connecting");
 
       const stream = await ensureLocalStream(incomingCall.mode);
@@ -781,10 +797,14 @@ export default function ChatPage() {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+      for (const candidate of pendingIceCandidatesRef.current) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+      pendingIceCandidatesRef.current = [];
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      await sendStructuredMessage(
+      await sendWebRTCSignal(
         `${incomingCall.mode} call accepted.`,
         {
           kind: "call",
@@ -806,7 +826,7 @@ export default function ChatPage() {
 
   async function rejectIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
-    await sendStructuredMessage("Call declined.", {
+    await sendWebRTCSignal("Call declined.", {
       kind: "call",
       title: "Call declined",
       action: "reject",
@@ -1004,6 +1024,16 @@ export default function ChatPage() {
     };
     setIsSharingScreen(true);
     setActionError(null);
+  }
+
+  async function sendWebRTCSignal(content: string, meta: EventMeta) {
+    if (!directRecipientId) return;
+    await sendMessage.mutateAsync({
+      content,
+      receiverId: directRecipientId,
+      messageType: "text",
+      metadata: JSON.stringify(meta),
+    });
   }
 
   async function sendStructuredMessage(content: string, meta: EventMeta, messageType: "text" | "code" | "file" = "text") {
@@ -2365,7 +2395,7 @@ export default function ChatPage() {
                         </div>
                         <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
                           <video ref={localVideoRef} autoPlay muted playsInline className={localVideoClassName} />
-                          {!localStreamRef.current && (
+                          {!hasLocalStream && (
                             <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
                               Local media preview
                             </div>
@@ -2378,7 +2408,7 @@ export default function ChatPage() {
                         </div>
                         <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
                           <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-                          {!remoteStreamRef.current && (
+                          {!hasRemoteStream && (
                             <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
                               Waiting for remote media
                             </div>
