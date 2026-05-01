@@ -3,6 +3,7 @@ import type { Server } from "node:http";
 import { WebSocketServer } from "ws";
 import { appRouter } from "./router";
 import { createWSContext } from "./context";
+import { handleCollabConnection } from "./collabServer";
 
 const globalWsState = globalThis as typeof globalThis & {
   __phpBackendWss?: WebSocketServer;
@@ -30,6 +31,13 @@ export function startWSServer(server?: Server) {
   if (server) {
     server.on("upgrade", (request, socket, head) => {
       const url = new URL(request.url ?? "/", "http://localhost");
+      if (url.pathname.startsWith("/api/collab")) {
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          handleCollabConnection(ws, request);
+        });
+        return;
+      }
+
       if (url.pathname !== "/api/trpc/ws") {
         return;
       }
@@ -39,6 +47,7 @@ export function startWSServer(server?: Server) {
       });
     });
     console.log("[WS] tRPC WebSocket server attached at /api/trpc/ws");
+    console.log("[WS] Collaboration WebSocket server attached at /api/collab/:room");
   } else {
     wss.on("listening", () => {
       console.log(`[WS] tRPC WebSocket server listening on ws://localhost:${port}`);

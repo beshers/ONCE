@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { Card } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmbeddedTerminal from "@/components/EmbeddedTerminal";
+import CollaborativeCodeEditor from "@/components/CollaborativeCodeEditor";
 import LocalAgentPage from "@/pages/LocalAgentPage";
 import { toast } from "sonner";
 import {
@@ -41,7 +42,6 @@ export default function EditorPage() {
   const [reviewText, setReviewText] = useState("");
   const [reviewLineStart, setReviewLineStart] = useState(0);
   const [aiPrompt, setAiPrompt] = useState("");
-  const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const utils = trpc.useUtils();
 
@@ -173,17 +173,23 @@ export default function EditorPage() {
     saveFile.mutate({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
   };
 
+  useEffect(() => {
+    if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
+    if (!project?.collaborationMode || project.collaborationMode === "solo") return;
+
+    const timer = window.setTimeout(() => {
+      saveFile.mutate({ id: activeFileId, content: code, language: activeFile.language || "plaintext" });
+    }, 5000);
+
+    return () => window.clearTimeout(timer);
+  }, [activeFileId, activeFile?.language, code, isModified, project?.collaborationMode, saveFile.isPending]);
+
   const handleRun = () => {
     toast.info("Running code in browser... (Simulated execution)");
   };
 
   // Line numbers for the textarea
   const lines = code.split("\n");
-  const lineCount = lines.length;
-
-  const handleLineClick = (lineNum: number) => {
-    setReviewLineStart(lineNum);
-  };
 
   const openCreateDialog = (parentId: number | null = null, type: "file" | "folder" = "file") => {
     setNewItemType(type);
@@ -553,28 +559,18 @@ export default function EditorPage() {
               </div>
             </div>
             <div className="flex-1 flex overflow-hidden">
-              {/* Line numbers */}
-              <div className="w-12 bg-[#0d0d12] border-r border-white/5 py-4 text-right pr-2 select-none overflow-hidden">
-                {Array.from({ length: Math.max(lineCount, 1) }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="text-[11px] text-slate-700 leading-6 cursor-pointer hover:text-slate-400"
-                    onClick={() => handleLineClick(i + 1)}
-                  >
-                    {i + 1}
-                  </div>
-                ))}
-              </div>
               {/* Code area */}
               {activeFile ? (
-                <textarea
-                  ref={editorRef}
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  spellCheck={false}
-                  className="flex-1 bg-transparent text-[13px] text-[#d4d4d4] font-mono leading-6 p-4 resize-none outline-none border-none whitespace-pre"
-                  placeholder="// Start coding..."
+                <div className="min-w-0 flex-1">
+                  <CollaborativeCodeEditor
+                    projectId={projectId!}
+                    fileId={activeFile.id}
+                    fileName={activeFile.name}
+                    language={activeFile.language || "plaintext"}
+                    value={code}
+                    onChange={setCode}
                 />
+                </div>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-slate-600">
                   <p className="text-sm">Select a file from the explorer to start editing</p>

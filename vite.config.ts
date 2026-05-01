@@ -29,6 +29,14 @@ export default defineConfig(async ({ command }) => {
     build: {
       outDir: path.resolve(__dirname, "dist/public"),
       emptyOutDir: true,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("monaco-editor")) return "monaco";
+            if (id.includes("yjs") || id.includes("y-websocket") || id.includes("y-monaco") || id.includes("y-protocols")) return "collab";
+          },
+        },
+      },
     },
   };
 });
