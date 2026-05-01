@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 function cleanEnv(name, fallback) {
   const value = process.env[name];
@@ -20,6 +20,8 @@ const ALLOW_NO_TOKEN = cleanEnv("OCNE_AGENT_NO_TOKEN", "false").toLowerCase() ==
 const TOKEN = ALLOW_NO_TOKEN ? "" : cleanEnv("OCNE_AGENT_TOKEN", crypto.randomBytes(18).toString("hex"));
 const WORKSPACE = path.resolve(cleanEnv("OCNE_AGENT_WORKSPACE", process.cwd()));
 const APPROVAL_MODE = cleanEnv("OCNE_AGENT_APPROVAL", "web").toLowerCase() === "terminal" ? "terminal" : "web";
+const ALLOWED_USER_ID = cleanEnv("OCNE_AGENT_ALLOWED_USER_ID", "");
+const ALLOWED_USER_EMAIL = cleanEnv("OCNE_AGENT_ALLOWED_USER_EMAIL", "").toLowerCase();
 const HOST = "127.0.0.1";
 
 if (!Number.isInteger(PORT) || PORT < 1024 || PORT > 65535) {
@@ -40,7 +42,7 @@ const rl = readline.createInterface({
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type,x-ocne-agent-token",
+    "Access-Control-Allow-Headers": "content-type,x-ocne-agent-token,x-ocne-user-id,x-ocne-user-email,x-ocne-user-name",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
@@ -117,6 +119,46 @@ function hasWebApproval(body) {
   return String(body.approval || "").trim().toUpperCase() === "APPROVE";
 }
 
+function requesterFrom(req, body) {
+  const bodyRequester = body && typeof body.requester === "object" ? body.requester : {};
+  return {
+    id: String(req.headers["x-ocne-user-id"] || bodyRequester.id || "").trim(),
+    email: String(req.headers["x-ocne-user-email"] || bodyRequester.email || "").trim().toLowerCase(),
+    name: String(req.headers["x-ocne-user-name"] || bodyRequester.name || "").trim(),
+  };
+}
+
+function requesterLabel(requester) {
+  const name = requester.name || "Unknown OCNE user";
+  const email = requester.email ? ` <${requester.email}>` : "";
+  const id = requester.id ? ` (${requester.id})` : "";
+  return `${name}${email}${id}`;
+}
+
+function requireAllowedRequester(req, res, body) {
+  const requester = requesterFrom(req, body);
+
+  if (ALLOWED_USER_ID && requester.id !== ALLOWED_USER_ID) {
+    sendJson(res, 403, {
+      ok: false,
+      error: "This local agent only allows commands from the configured OCNE user id.",
+      code: "USER_NOT_ALLOWED",
+    });
+    return null;
+  }
+
+  if (ALLOWED_USER_EMAIL && requester.email !== ALLOWED_USER_EMAIL) {
+    sendJson(res, 403, {
+      ok: false,
+      error: "This local agent only allows commands from the configured OCNE user email.",
+      code: "USER_NOT_ALLOWED",
+    });
+    return null;
+  }
+
+  return requester;
+}
+
 function resolveShell() {
   if (process.platform === "win32") {
     const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
@@ -167,6 +209,9 @@ function agentHealth() {
     approvalMode: APPROVAL_MODE,
     tokenRequired: !ALLOW_NO_TOKEN,
     tokenLength: TOKEN.length,
+    identificationRequired: Boolean(ALLOWED_USER_ID || ALLOWED_USER_EMAIL),
+    allowedUserIdConfigured: Boolean(ALLOWED_USER_ID),
+    allowedUserEmailConfigured: Boolean(ALLOWED_USER_EMAIL),
   };
 }
 
@@ -187,6 +232,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/run") {
       if (!requireToken(req, res)) return;
       const body = await readBody(req);
+      const requester = requireAllowedRequester(req, res, body);
+      if (!requester) return;
+
       const command = String(body.command || "").trim();
 
       if (!command) {
@@ -211,8 +259,9 @@ const server = http.createServer(async (req, res) => {
       }
 
       console.log(`\n[OCNE Agent] Running approved command: ${command}`);
+      console.log(`[OCNE Agent] Requested by: ${requesterLabel(requester)}`);
       const result = await runCommand(command);
-      sendJson(res, 200, result);
+      sendJson(res, 200, { ...result, requester });
       return;
     }
 
@@ -252,6 +301,9 @@ function printBanner() {
   console.log(ALLOW_NO_TOKEN ? "Token:     disabled for local testing" : `Token:     ${TOKEN}`);
   console.log(`Workspace: ${WORKSPACE}`);
   console.log(`Approval:  ${APPROVAL_MODE === "terminal" ? "terminal prompt" : "website APPROVE field"}`);
+  console.log(ALLOWED_USER_ID || ALLOWED_USER_EMAIL
+    ? "Identity:  restricted to the configured OCNE user"
+    : "Identity:  requester is logged, no user restriction configured");
   if (ALLOW_NO_TOKEN) {
     console.log("WARNING:  No-token mode is for local testing only.");
   }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/hooks/useAuth";
 
 type AgentHealth = {
   ok: boolean;
@@ -19,6 +20,9 @@ type AgentHealth = {
   approvalMode?: string;
   tokenRequired?: boolean;
   tokenLength?: number;
+  identificationRequired?: boolean;
+  allowedUserIdConfigured?: boolean;
+  allowedUserEmailConfigured?: boolean;
 };
 
 type RunResult = {
@@ -27,10 +31,15 @@ type RunResult = {
   stdout?: string;
   stderr?: string;
   error?: string | null;
+  requester?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  };
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
-const EXPECTED_AGENT_VERSION = "0.3.0";
+const EXPECTED_AGENT_VERSION = "0.4.0";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -67,6 +76,7 @@ function explainError(error: unknown) {
 }
 
 export default function LocalAgentPage() {
+  const { user } = useAuth();
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem("ocne-agent-endpoint") || DEFAULT_ENDPOINT);
   const [token, setToken] = useState(() => localStorage.getItem("ocne-agent-token") || "");
   const [stayConnected, setStayConnected] = useState(() => localStorage.getItem("ocne-agent-stay-connected") === "true");
@@ -82,6 +92,20 @@ export default function LocalAgentPage() {
   const tokenRequired = health?.tokenRequired !== false;
   const needsWebsiteApproval = health?.approvalMode !== "terminal";
   const versionIsCurrent = health?.version === EXPECTED_AGENT_VERSION;
+  const requester = useMemo(() => {
+    const name =
+      (typeof (user as any)?.fullName === "string" && (user as any).fullName) ||
+      (typeof (user as any)?.full_name === "string" && (user as any).full_name) ||
+      (typeof (user as any)?.name === "string" && (user as any).name) ||
+      (typeof (user as any)?.username === "string" && (user as any).username) ||
+      "";
+
+    return {
+      id: String((user as any)?.id || ""),
+      email: String((user as any)?.email || ""),
+      name,
+    };
+  }, [user]);
 
   useEffect(() => {
     localStorage.setItem("ocne-agent-endpoint", endpoint.trim());
@@ -150,9 +174,12 @@ export default function LocalAgentPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-ocne-user-id": requester.id,
+          "x-ocne-user-email": requester.email,
+          "x-ocne-user-name": requester.name,
           ...(tokenRequired ? { "x-ocne-agent-token": tokenValue } : {}),
         },
-        body: JSON.stringify({ command, approval: approval.trim() }),
+        body: JSON.stringify({ command, approval: approval.trim(), requester }),
       }));
       setResult(data);
       setStatus(data.ok ? "Command finished." : data.error || "Command failed.");
@@ -230,6 +257,12 @@ export default function LocalAgentPage() {
               </Button>
             </div>
             <div className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">{status}</div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+              <div className="mb-1 font-semibold text-slate-100">Website identity</div>
+              <div>{requester.name || "Signed-in OCNE user"}</div>
+              <div>{requester.email || "No email available"}</div>
+              <div className="break-all">{requester.id || "No user id available"}</div>
+            </div>
             {health && (
               <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
                 <div>Agent: {health.name}</div>
@@ -242,6 +275,11 @@ export default function LocalAgentPage() {
                 <div>Platform: {health.platform} / {health.arch}</div>
                 <div>Approval: {health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
                 <div>Token: {health.tokenRequired === false ? "disabled for local testing" : `required${health.tokenLength ? `, ${health.tokenLength} characters` : ""}`}</div>
+                <div>
+                  Identity: {health.identificationRequired
+                    ? `restricted${health.allowedUserEmailConfigured ? " by email" : ""}${health.allowedUserIdConfigured ? " by user id" : ""}`
+                    : "logged only"}
+                </div>
                 <div className="break-all">Workspace: {health.workspace}</div>
               </div>
             )}
@@ -293,7 +331,7 @@ export default function LocalAgentPage() {
               <ShieldCheck className="mr-2 inline h-4 w-4" />
               {health?.approvalMode === "terminal"
                 ? "The command will not run until the user types approval in the local agent window."
-                : "The command will not run until APPROVE is typed in this website and the token is valid. Approval resets after each run."}
+                : "The command sends your OCNE identity, then waits for APPROVE and a valid token when token mode is enabled. Approval resets after each run."}
             </div>
             {result && (
               <div className="overflow-hidden rounded-2xl border border-white/10 bg-black">

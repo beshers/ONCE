@@ -36,6 +36,26 @@ npm run agent:no-token
 
 The website will still require `APPROVE` before each command. Do not use no-token mode on a shared or untrusted computer.
 
+## Allow Only One OCNE User
+
+Every command request includes the signed-in OCNE user's id, email, and display name. The agent logs that identity before it runs the command.
+
+To allow only one account by email:
+
+```powershell
+$env:OCNE_AGENT_ALLOWED_USER_EMAIL="you@example.com"
+npm run agent
+```
+
+Or allow only one account by user id:
+
+```powershell
+$env:OCNE_AGENT_ALLOWED_USER_ID="your-ocne-user-id"
+npm run agent
+```
+
+Token mode is still the stronger protection. Use no-token mode only for your own local testing.
+
 ## Choose A Workspace
 
 Start it from the folder you want to allow, or set:
