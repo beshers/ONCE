@@ -66,7 +66,7 @@ export default function EditorPage() {
     { projectId: projectId! },
     {
       enabled: !!projectId,
-      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 2000 : false,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : false,
     }
   );
   const { data: versions } = trpc.project.versions.useQuery(
@@ -77,21 +77,21 @@ export default function EditorPage() {
     { fileId: activeFileId! },
     {
       enabled: !!activeFileId,
-      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 3000 : false,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 7000 : false,
     }
   );
   const { data: collaborators } = trpc.project.collaborators.useQuery(
     { projectId: projectId! },
     {
       enabled: !!projectId,
-      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : false,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 10000 : false,
     }
   );
   const { data: liveState } = trpc.project.liveState.useQuery(
     { projectId: projectId! },
     {
       enabled: !!projectId && Boolean(project?.collaborationMode && project.collaborationMode !== "solo"),
-      refetchInterval: 2500,
+      refetchInterval: 5000,
     }
   );
   const heartbeat = trpc.project.heartbeat.useMutation();

@@ -188,13 +188,13 @@ export default function ChatPage() {
   const { data: rooms, refetch: refetchRooms } = trpc.chat.rooms.useQuery();
   const { data: publicRooms, refetch: refetchPublicRooms } = trpc.chat.publicRooms.useQuery();
   const { data: directThreads, refetch: refetchDirectThreads } = trpc.chat.directThreads.useQuery(undefined, {
-    refetchInterval: callState !== "idle" || !enableWebSockets ? 2000 : 10000,
+    refetchInterval: callState !== "idle" ? 2000 : !enableWebSockets ? 5000 : 15000,
   });
   const { data: incomingCallOffers } = trpc.chat.incomingCallOffers.useQuery(
     { since: 0 },
     {
       enabled: Boolean(user?.id),
-      refetchInterval: callState === "idle" ? 1500 : false,
+      refetchInterval: callState === "idle" ? 3000 : false,
     },
   );
   const { data: onlineUsers } = trpc.user.onlineUsers.useQuery(undefined, {
@@ -220,7 +220,7 @@ export default function ChatPage() {
   );
   const { data: messages, refetch } = trpc.chat.messages.useQuery(
     messageQueryInput,
-    { refetchInterval: callState !== "idle" || directRecipientId ? 800 : 3000 },
+    { refetchInterval: callState !== "idle" ? 800 : directRecipientId ? 2500 : 5000 },
   );
   const { data: searchResults } = trpc.chat.searchMessages.useQuery(
     directRecipientId
