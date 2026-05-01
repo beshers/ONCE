@@ -15,7 +15,7 @@ import {
   FileCode, Folder, Save, Play, MessageSquare,
   Plus, Trash2, Clock,
   Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
-  ChevronDown, ChevronRight, FolderPlus
+  ChevronDown, ChevronRight, FolderPlus, Radio, Activity
 } from "lucide-react";
 
 const languages = [
@@ -74,6 +74,14 @@ export default function EditorPage() {
       refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : false,
     }
   );
+  const { data: liveState } = trpc.project.liveState.useQuery(
+    { projectId: projectId! },
+    {
+      enabled: !!projectId && Boolean(project?.collaborationMode && project.collaborationMode !== "solo"),
+      refetchInterval: 2500,
+    }
+  );
+  const heartbeat = trpc.project.heartbeat.useMutation();
 
   const saveFile = trpc.project.fileUpdate.useMutation({
     onSuccess: () => {
@@ -126,6 +134,8 @@ export default function EditorPage() {
   const activeFile = files?.find((f) => f.id === activeFileId);
   const isModified = code !== originalCode;
   const folders = (files || []).filter((item) => item.type === "folder");
+  const liveUsers = liveState?.users || [];
+  const liveActivity = liveState?.activity || [];
 
   useEffect(() => {
     if (activeFile) {
@@ -140,6 +150,23 @@ export default function EditorPage() {
       setOriginalCode(activeFile.content || "");
     }
   }, [activeFile?.updatedAt]);
+
+  useEffect(() => {
+    if (!projectId || !project?.collaborationMode || project.collaborationMode === "solo") return;
+
+    const sendHeartbeat = () => {
+      heartbeat.mutate({
+        projectId,
+        activeFileId: activeFileId ?? null,
+        activeFileName: activeFile?.name || null,
+        status: isModified ? "editing" : "viewing",
+      });
+    };
+
+    sendHeartbeat();
+    const timer = window.setInterval(sendHeartbeat, 12000);
+    return () => window.clearInterval(timer);
+  }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified]);
 
   const handleSave = () => {
     if (!activeFileId) return;
@@ -195,6 +222,14 @@ export default function EditorPage() {
       : `Delete file "${item.name}"?`;
     if (!confirm(message)) return;
     deleteFile.mutate({ id: item.id });
+  };
+
+  const usersForFile = (fileId: number) => liveUsers.filter((user) => user.activeFileId === fileId);
+
+  const activityText = (item: NonNullable<typeof liveState>["activity"][number]) => {
+    const target = item.target ? ` ${item.target}` : "";
+    const action = item.action.replace(/_/g, " ");
+    return `${item.name} ${action}${target}`;
   };
 
   const renderFileTree = (parentId: number | null = null, depth = 0): JSX.Element[] => {
@@ -258,6 +293,11 @@ export default function EditorPage() {
               >
                 <Plus className="h-3 w-3" />
               </button>
+            )}
+            {usersForFile(item.id).length > 0 && (
+              <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] text-emerald-300">
+                {usersForFile(item.id).length}
+              </span>
             )}
             <button
               type="button"
@@ -333,6 +373,22 @@ export default function EditorPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {liveUsers.length > 0 && (
+            <div className="hidden items-center gap-1 md:flex">
+              {liveUsers.slice(0, 5).map((user) => (
+                <div
+                  key={user.userId}
+                  title={`${user.name}${user.activeFileName ? ` - ${user.activeFileName}` : ""}`}
+                  className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] font-bold text-white"
+                >
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              ))}
+              {liveUsers.length > 5 && (
+                <span className="text-xs text-slate-500">+{liveUsers.length - 5}</span>
+              )}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -534,11 +590,58 @@ export default function EditorPage() {
           </div>
           </div>
           <div className="rounded-xl border border-white/5 bg-[#13131f] p-4">
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-white">Editor Terminal</h3>
-              <p className="text-xs text-slate-500">Use the same in-app terminal without leaving the editor.</p>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Editor Terminal</h3>
+                <p className="text-xs text-slate-500">Use the same in-app terminal without leaving the editor.</p>
+              </div>
+              {project?.collaborationMode !== "solo" && (
+                <Badge className="bg-emerald-500/10 text-emerald-300">
+                  <Radio className="mr-1 h-3 w-3" /> {liveUsers.length} live
+                </Badge>
+              )}
             </div>
-            <EmbeddedTerminal compact title="Editor Terminal" />
+            <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+              <EmbeddedTerminal compact title="Editor Terminal" />
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  <Activity className="h-4 w-4 text-cyan-300" /> Live activity
+                </div>
+                {project?.collaborationMode === "solo" ? (
+                  <p className="text-xs leading-5 text-slate-500">Switch this project to team or public mode to see live collaborators.</p>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {liveUsers.length === 0 ? (
+                        <p className="text-xs text-slate-500">No other active users yet.</p>
+                      ) : liveUsers.map((user) => (
+                        <div key={user.userId} className="flex items-center gap-2 rounded-lg bg-white/[0.03] p-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-semibold text-cyan-100">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-xs text-white">{user.name}</div>
+                            <div className="truncate text-[10px] text-slate-500">
+                              {user.status} {user.activeFileName || "workspace"}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-white/10 pt-3">
+                      {liveActivity.length === 0 ? (
+                        <p className="text-xs text-slate-500">Activity appears here as people work.</p>
+                      ) : liveActivity.slice(0, 8).map((item) => (
+                        <div key={item.id} className="mb-2 text-xs leading-5 text-slate-400">
+                          <span className="text-slate-200">{activityText(item)}</span>
+                          <div className="text-[10px] text-slate-600">{new Date(item.createdAt).toLocaleTimeString()}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </TabsContent>
 

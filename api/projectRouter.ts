@@ -5,6 +5,70 @@ import { incrementUserStats } from "./queries/user-stats";
 import { projects, projectFiles, projectCollaborators, projectVersions, users } from "@db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
+type ProjectPresence = {
+  userId: string;
+  name: string;
+  username?: string | null;
+  avatar?: string | null;
+  activeFileId?: number | null;
+  activeFileName?: string | null;
+  status: "viewing" | "editing";
+  updatedAt: number;
+};
+
+type ProjectActivity = {
+  id: string;
+  projectId: number;
+  userId: string;
+  name: string;
+  action: "created_file" | "created_folder" | "updated_file" | "deleted_file" | "deleted_folder" | "joined" | "settings";
+  target?: string | null;
+  fileId?: number | null;
+  createdAt: number;
+};
+
+const presenceByProject = new Map<number, Map<string, ProjectPresence>>();
+const activityByProject = new Map<number, ProjectActivity[]>();
+const PRESENCE_TTL_MS = 45_000;
+const MAX_ACTIVITY_ITEMS = 80;
+
+function displayName(user: { name?: string | null; username?: string | null; email?: string | null; id: string }) {
+  return user.name || user.username || user.email || user.id;
+}
+
+function pushActivity(
+  projectId: number,
+  user: { id: string; name?: string | null; username?: string | null; email?: string | null },
+  action: ProjectActivity["action"],
+  target?: string | null,
+  fileId?: number | null,
+) {
+  const items = activityByProject.get(projectId) || [];
+  items.unshift({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    projectId,
+    userId: user.id,
+    name: displayName(user),
+    action,
+    target,
+    fileId,
+    createdAt: Date.now(),
+  });
+  activityByProject.set(projectId, items.slice(0, MAX_ACTIVITY_ITEMS));
+}
+
+function prunePresence(projectId: number) {
+  const usersMap = presenceByProject.get(projectId);
+  if (!usersMap) return [];
+  const now = Date.now();
+  for (const [userId, presence] of usersMap) {
+    if (now - presence.updatedAt > PRESENCE_TTL_MS) {
+      usersMap.delete(userId);
+    }
+  }
+  return Array.from(usersMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export const projectRouter = createRouter({
   // ── LIST ──
   list: authedQuery.query(async ({ ctx }) => {
@@ -93,6 +157,9 @@ export const projectRouter = createRouter({
       const [project] = await db.select().from(projects).where(eq(projects.id, id));
       if (!project || project.ownerId !== ctx.user.id) throw new Error("Access denied");
       await db.update(projects).set(data).where(eq(projects.id, id));
+      if (Object.keys(data).length > 0) {
+        pushActivity(id, ctx.user, "settings", "project settings");
+      }
       return { success: true };
     }),
 
@@ -146,6 +213,13 @@ export const projectRouter = createRouter({
       }));
       if (!canEdit) throw new Error("Edit access denied");
       const [{ id }] = await db.insert(projectFiles).values(input).$returningId();
+      pushActivity(
+        input.projectId,
+        ctx.user,
+        input.type === "folder" ? "created_folder" : "created_file",
+        input.name,
+        id,
+      );
       return { id };
     }),
 
@@ -182,6 +256,7 @@ export const projectRouter = createRouter({
         ...(input.language ? { language: input.language } : {}),
         updatedAt: new Date(),
       }).where(eq(projectFiles.id, input.id));
+      pushActivity(file.projectId, ctx.user, "updated_file", input.name || file.name, file.id);
       return { success: true };
     }),
 
@@ -207,10 +282,69 @@ export const projectRouter = createRouter({
           }
         }
         await db.delete(projectFiles).where(inArray(projectFiles.id, Array.from(idsToDelete)));
+        pushActivity(file.projectId, ctx.user, "deleted_folder", file.name, file.id);
       } else {
         await db.delete(projectFiles).where(eq(projectFiles.id, input.id));
+        pushActivity(file.projectId, ctx.user, "deleted_file", file.name, file.id);
       }
       return { success: true };
+    }),
+
+  // Live collaboration presence and activity. This is intentionally lightweight
+  // and polling-friendly; the next step can swap it to Yjs/WebSocket transport.
+  heartbeat: authedQuery
+    .input(z.object({
+      projectId: z.number(),
+      activeFileId: z.number().nullable().optional(),
+      activeFileName: z.string().nullable().optional(),
+      status: z.enum(["viewing", "editing"]).default("viewing"),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
+      if (!project) throw new Error("Project not found");
+      if (!project.isPublic && project.ownerId !== ctx.user.id) {
+        const [collab] = await db.select().from(projectCollaborators).where(
+          and(eq(projectCollaborators.projectId, input.projectId), eq(projectCollaborators.userId, ctx.user.id))
+        );
+        if (!collab) throw new Error("Access denied");
+      }
+
+      const usersMap = presenceByProject.get(input.projectId) || new Map<string, ProjectPresence>();
+      const hadPresence = usersMap.has(ctx.user.id);
+      usersMap.set(ctx.user.id, {
+        userId: ctx.user.id,
+        name: displayName(ctx.user),
+        username: ctx.user.username,
+        avatar: ctx.user.avatar,
+        activeFileId: input.activeFileId ?? null,
+        activeFileName: input.activeFileName ?? null,
+        status: input.status,
+        updatedAt: Date.now(),
+      });
+      presenceByProject.set(input.projectId, usersMap);
+      if (!hadPresence) {
+        pushActivity(input.projectId, ctx.user, "joined", "workspace");
+      }
+      return { success: true, users: prunePresence(input.projectId) };
+    }),
+
+  liveState: authedQuery
+    .input(z.object({ projectId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const db = getDb();
+      const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
+      if (!project) throw new Error("Project not found");
+      if (!project.isPublic && project.ownerId !== ctx.user.id) {
+        const [collab] = await db.select().from(projectCollaborators).where(
+          and(eq(projectCollaborators.projectId, input.projectId), eq(projectCollaborators.userId, ctx.user.id))
+        );
+        if (!collab) throw new Error("Access denied");
+      }
+      return {
+        users: prunePresence(input.projectId),
+        activity: activityByProject.get(input.projectId) || [],
+      };
     }),
 
   // ── COLLABORATORS ──
