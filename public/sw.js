@@ -1,5 +1,5 @@
 // Service Worker for OCNE PWA Offline Support
-const CACHE_NAME = 'ocne-v3';
+const CACHE_NAME = 'ocne-v4';
 const OFFLINE_URLS = [
   '/',
   '/chat',
@@ -38,6 +38,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
 
   // Skip API calls - let them go to network
   if (event.request.url.includes('/api/')) {

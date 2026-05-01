@@ -26,6 +26,15 @@ type RunResult = {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(text || `Request failed with status ${response.status}`);
+  }
+}
+
 export default function LocalAgentPage() {
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem("ocne-agent-endpoint") || DEFAULT_ENDPOINT);
   const [token, setToken] = useState(() => localStorage.getItem("ocne-agent-token") || "");
@@ -50,7 +59,7 @@ export default function LocalAgentPage() {
     setResult(null);
     try {
       const response = await fetch(`${normalizedEndpoint}/health`);
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       if (!response.ok || !data.ok) {
         throw new Error(data.error || "Agent did not respond correctly.");
       }
@@ -80,7 +89,7 @@ export default function LocalAgentPage() {
         },
         body: JSON.stringify({ command }),
       });
-      const data = await response.json();
+      const data = await readJsonResponse(response);
       setResult(data);
       setStatus(data.ok ? "Command finished." : data.error || "Command failed.");
     } catch (error) {
