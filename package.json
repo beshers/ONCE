@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "start": "NODE_ENV=production node dist/boot.js",
+    "agent": "node local-agent/agent.cjs",
     "check": "tsc -b",
     "format": "prettier --write .",
     "test": "vitest run",

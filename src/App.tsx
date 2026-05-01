@@ -30,6 +30,7 @@ import EnvVariablesPage from "./pages/EnvVariablesPage"
 import ActivityHeatmapPage from "./pages/ActivityHeatmapPage"
 import ThemeSettingsPage from "./pages/ThemeSettingsPage"
 import PwaInstallButton from "./components/PwaInstallButton"
+import LocalAgentPage from "./pages/LocalAgentPage"
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth({ redirectOnUnauthenticated: true })
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
         <Route path="/editor" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
         <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
+        <Route path="/local-agent" element={<AuthWrapper><LocalAgentPage /></AuthWrapper>} />
         <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
         <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
         <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />

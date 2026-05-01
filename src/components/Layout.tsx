@@ -9,7 +9,7 @@ import {
   Globe,
   Trophy, Palette, Zap, GitBranch, Bookmark,
   Building2, Plug, FileText, Radio, Package, Rocket,
-  Bug, Key, Flame
+  Bug, Key, Flame, MonitorUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -27,6 +27,7 @@ const navItems = [
   { icon: FolderOpen, label: "Projects", path: "/projects" },
   { icon: Code2, label: "Editor", path: "/editor" },
   { icon: Terminal, label: "Terminal", path: "/terminal" },
+  { icon: MonitorUp, label: "Local Agent", path: "/local-agent" },
   { icon: MessageSquare, label: "Chat", path: "/chat" },
   { icon: FileCode2, label: "Snippets", path: "/snippets" },
   { icon: Globe, label: "Social Feed", path: "/social" },
