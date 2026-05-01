@@ -136,6 +136,7 @@ export default function ChatPage() {
   const [bandwidthMode, setBandwidthMode] = useState("adaptive");
   const [callBackground, setCallBackground] = useState("Nebula IDE");
   const [recordedClipUrl, setRecordedClipUrl] = useState<string | null>(null);
+  const [recordedClipName, setRecordedClipName] = useState("call-recording.webm");
   const [transcriptSearch, setTranscriptSearch] = useState("");
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomPrivacy, setNewRoomPrivacy] = useState<"public" | "private">("public");
@@ -599,9 +600,10 @@ export default function ChatPage() {
     setMessageText("");
     setMessageSearch("");
     if (!directRecipientId) {
-      // eslint-disable-next-line react-hooks/immutability
       void cleanupActiveCall(false);
     }
+  // cleanupActiveCall intentionally stays out of deps because it is a local async teardown helper.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoom, directRecipientId]);
 
   useEffect(() => {
@@ -686,6 +688,8 @@ export default function ChatPage() {
         }
       }
     })();
+  // cleanupActiveCall intentionally stays out of deps because it is a local async teardown helper.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directRecipientId, enrichedMessages, user?.id]);
 
   async function ensureLocalStream(mode: "voice" | "video") {
@@ -958,6 +962,7 @@ export default function ChatPage() {
       }
       const url = URL.createObjectURL(blob);
       setRecordedClipUrl(url);
+      setRecordedClipName(`call-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`);
       setActionError("Recording stopped. A local recording download is ready in Meeting controls.");
     };
     recorder.start();
@@ -2243,7 +2248,7 @@ export default function ChatPage() {
                   {recordedClipUrl && (
                     <a
                       href={recordedClipUrl}
-                      download={`call-recording-${Date.now()}.webm`}
+                      download={recordedClipName}
                       className="mt-3 flex h-10 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
                     >
                       Download latest recording

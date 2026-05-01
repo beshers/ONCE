@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { Card } from "@/components/ui/card";
@@ -20,13 +20,17 @@ import {
   ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
   Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown, Bug, Archive, Box, Camera,
   Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw,
-  Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert
+  Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert,
+  type LucideIcon,
 } from "lucide-react";
 
 const languages = [
   "plaintext", "javascript", "typescript", "python", "php",
   "java", "csharp", "html", "css", "go", "rust", "ruby", "sql", "json", "markdown",
 ];
+
+type FeatureCard = [string, string, LucideIcon];
+type ProviderCard = [string, LucideIcon];
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -156,14 +160,14 @@ export default function EditorPage() {
       setCode(activeFile.content || "");
       setOriginalCode(activeFile.content || "");
     }
-  }, [activeFile?.id]);
+  }, [activeFile]);
 
   useEffect(() => {
     if (activeFile && !isModified) {
       setCode(activeFile.content || "");
       setOriginalCode(activeFile.content || "");
     }
-  }, [activeFile?.updatedAt]);
+  }, [activeFile, isModified]);
 
   useEffect(() => {
     if (!projectId || !project?.collaborationMode || project.collaborationMode === "solo") return;
@@ -180,7 +184,7 @@ export default function EditorPage() {
     sendHeartbeat();
     const timer = window.setInterval(sendHeartbeat, 12000);
     return () => window.clearInterval(timer);
-  }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified]);
+  }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified, heartbeat]);
 
   const handleSave = () => {
     if (!activeFileId) return;
@@ -196,7 +200,7 @@ export default function EditorPage() {
     }, 5000);
 
     return () => window.clearTimeout(timer);
-  }, [activeFileId, activeFile?.language, code, isModified, project?.collaborationMode, saveFile.isPending]);
+  }, [activeFileId, activeFile, code, isModified, project?.collaborationMode, saveFile]);
 
   const handleRun = () => {
     setActiveTab("terminal");
@@ -322,7 +326,7 @@ export default function EditorPage() {
     return `${item.name} ${action}${target}`;
   };
 
-  const renderFileTree = (parentId: number | null = null, depth = 0): JSX.Element[] => {
+  const renderFileTree = (parentId: number | null = null, depth = 0): ReactElement[] => {
     const children = (files || [])
       .filter((item) => (item.parentId ?? null) === parentId)
       .sort((a, b) => {
@@ -1039,11 +1043,11 @@ export default function EditorPage() {
               </Badge>
             </div>
             <div className="mb-4 grid gap-3 md:grid-cols-3">
-              {[
+              {([
                 ["Admin", "Can manage files, settings, collaborators, and terminal access.", Crown],
                 ["Editor", "Can create files, edit code, chat, annotate, and run allowed workflows.", FileCode],
                 ["Viewer", "Can read code, follow sessions, join calls, and review without writing.", Eye],
-              ].map(([role, text, Icon]) => (
+              ] satisfies FeatureCard[]).map(([role, text, Icon]) => (
                 <div key={String(role)} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center gap-2 text-xs font-semibold text-white">
                     <Icon className="h-4 w-4 text-cyan-300" /> {role}
@@ -1235,11 +1239,11 @@ export default function EditorPage() {
                   <Badge className="bg-cyan-500/10 text-cyan-200">debug session</Badge>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {[
+                  {([
                     ["Breakpoints", activeFile ? `${activeFile.name}: line ${reviewLineStart || 1}` : "Select a file first", Bug],
                     ["Step control", "Step over, into, out", Play],
                     ["Variables", "Inspect shared runtime state", Eye],
-                  ].map(([title, text, Icon]) => (
+                  ] satisfies FeatureCard[]).map(([title, text, Icon]) => (
                     <div key={String(title)} className="rounded-lg border border-white/10 bg-black/20 p-3">
                       <div className="flex items-center gap-2 text-xs font-semibold text-white">
                         <Icon className="h-4 w-4 text-cyan-300" /> {title}
@@ -1272,11 +1276,11 @@ export default function EditorPage() {
                   </Button>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3">
-                  {[
+                  {([
                     ["Libraries", "package.json, lockfiles, Python requirements", Package],
                     ["Open files", activeFile?.name || "No active file", FileCode],
                     ["Terminal", "Last commands and output streams", MonitorUp],
-                  ].map(([title, text, Icon]) => (
+                  ] satisfies FeatureCard[]).map(([title, text, Icon]) => (
                     <div key={String(title)} className="rounded-lg border border-white/10 bg-black/20 p-3">
                       <Icon className="mb-2 h-4 w-4 text-emerald-300" />
                       <div className="text-xs font-semibold text-white">{title}</div>
@@ -1318,12 +1322,12 @@ export default function EditorPage() {
                   Deploy consistently to cloud providers or private servers from the same live workspace.
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  {[
+                  {([
                     ["AWS", Cloud],
                     ["Azure", Server],
                     ["Google Cloud", Database],
                     ["On-prem", HardDrive],
-                  ].map(([provider, Icon]) => (
+                  ] satisfies ProviderCard[]).map(([provider, Icon]) => (
                     <Button key={String(provider)} variant="ghost" className="justify-start border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${provider} deployment needs provider credentials, build recipes, and policy checks.`)}>
                       <Icon className="mr-2 h-4 w-4 text-sky-300" /> {provider}
                     </Button>
