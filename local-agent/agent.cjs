@@ -16,7 +16,8 @@ function cleanEnv(name, fallback) {
 }
 
 const PORT = Number(cleanEnv("OCNE_AGENT_PORT", "48731"));
-const TOKEN = cleanEnv("OCNE_AGENT_TOKEN", crypto.randomBytes(18).toString("hex"));
+const ALLOW_NO_TOKEN = cleanEnv("OCNE_AGENT_NO_TOKEN", "false").toLowerCase() === "true";
+const TOKEN = ALLOW_NO_TOKEN ? "" : cleanEnv("OCNE_AGENT_TOKEN", crypto.randomBytes(18).toString("hex"));
 const WORKSPACE = path.resolve(cleanEnv("OCNE_AGENT_WORKSPACE", process.cwd()));
 const APPROVAL_MODE = cleanEnv("OCNE_AGENT_APPROVAL", "web").toLowerCase() === "terminal" ? "terminal" : "web";
 const HOST = "127.0.0.1";
@@ -88,6 +89,8 @@ function tokenMatches(candidate) {
 }
 
 function requireToken(req, res) {
+  if (ALLOW_NO_TOKEN) return true;
+
   if (!tokenMatches(req.headers["x-ocne-agent-token"])) {
     sendJson(res, 401, {
       ok: false,
@@ -162,7 +165,7 @@ function agentHealth() {
     hostname: os.hostname(),
     workspace: WORKSPACE,
     approvalMode: APPROVAL_MODE,
-    tokenRequired: true,
+    tokenRequired: !ALLOW_NO_TOKEN,
     tokenLength: TOKEN.length,
   };
 }
@@ -246,9 +249,12 @@ function printBanner() {
   console.log("OCNE Local Agent is running");
   console.log(`Version:   ${VERSION}`);
   console.log(`URL:       http://${HOST}:${PORT}`);
-  console.log(`Token:     ${TOKEN}`);
+  console.log(ALLOW_NO_TOKEN ? "Token:     disabled for local testing" : `Token:     ${TOKEN}`);
   console.log(`Workspace: ${WORKSPACE}`);
   console.log(`Approval:  ${APPROVAL_MODE === "terminal" ? "terminal prompt" : "website APPROVE field"}`);
+  if (ALLOW_NO_TOKEN) {
+    console.log("WARNING:  No-token mode is for local testing only.");
+  }
   console.log("Keep this window open while using OCNE Agent.");
   console.log(APPROVAL_MODE === "terminal"
     ? "Commands require approval here before they run."

@@ -17,6 +17,7 @@ type AgentHealth = {
   hostname: string;
   workspace: string;
   approvalMode?: string;
+  tokenRequired?: boolean;
   tokenLength?: number;
 };
 
@@ -77,6 +78,7 @@ export default function LocalAgentPage() {
 
   const normalizedEndpoint = useMemo(() => endpoint.trim().replace(/\/+$/, ""), [endpoint]);
   const tokenValue = token.trim();
+  const tokenRequired = health?.tokenRequired !== false;
   const needsWebsiteApproval = health?.approvalMode !== "terminal";
   const versionIsCurrent = health?.version === EXPECTED_AGENT_VERSION;
 
@@ -107,7 +109,7 @@ export default function LocalAgentPage() {
   }
 
   async function runCommand() {
-    if (!tokenValue) {
+    if (tokenRequired && !tokenValue) {
       setStatus("Paste the local agent token first.");
       return;
     }
@@ -124,7 +126,7 @@ export default function LocalAgentPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-ocne-agent-token": tokenValue,
+          ...(tokenRequired ? { "x-ocne-agent-token": tokenValue } : {}),
         },
         body: JSON.stringify({ command, approval: approval.trim() }),
       }));
@@ -181,7 +183,9 @@ export default function LocalAgentPage() {
               Copy the current endpoint and token from that agent window.
             </div>
             <Input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} className="border-white/10 bg-black/30 text-white" />
-            <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste local agent token" className="border-white/10 bg-black/30 text-white" />
+            {tokenRequired && (
+              <Input value={token} onChange={(event) => setToken(event.target.value)} placeholder="Paste local agent token" className="border-white/10 bg-black/30 text-white" />
+            )}
             <Button onClick={() => void connect()} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400">
               <Plug className="mr-2 h-4 w-4" />
               Connect to agent
@@ -198,7 +202,7 @@ export default function LocalAgentPage() {
                 <div>Computer: {health.hostname}</div>
                 <div>Platform: {health.platform} / {health.arch}</div>
                 <div>Approval: {health.approvalMode === "terminal" ? "Agent terminal window" : "Website APPROVE field"}</div>
-                <div>Token: required{health.tokenLength ? `, ${health.tokenLength} characters` : ""}</div>
+                <div>Token: {health.tokenRequired === false ? "disabled for local testing" : `required${health.tokenLength ? `, ${health.tokenLength} characters` : ""}`}</div>
                 <div className="break-all">Workspace: {health.workspace}</div>
               </div>
             )}

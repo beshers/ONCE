@@ -26,6 +26,16 @@ $env:OCNE_AGENT_APPROVAL="terminal"
 npm run agent
 ```
 
+## No-Token Local Test Mode
+
+For quick local testing only:
+
+```powershell
+npm run agent:no-token
+```
+
+The website will still require `APPROVE` before each command. Do not use no-token mode on a shared or untrusted computer.
+
 ## Choose A Workspace
 
 Start it from the folder you want to allow, or set:
