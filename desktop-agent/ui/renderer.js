@@ -8,6 +8,8 @@ const computer = document.getElementById("computer");
 const version = document.getElementById("version");
 const access = document.getElementById("access");
 const token = document.getElementById("token");
+const commandStatus = document.getElementById("commandStatus");
+const commandOutput = document.getElementById("commandOutput");
 const autoStart = document.getElementById("autoStart");
 const updates = document.getElementById("updates");
 const checkUpdates = document.getElementById("checkUpdates");
@@ -32,6 +34,14 @@ function render(status) {
   version.textContent = status.version;
   access.textContent = status.allowAllFiles ? "All user-accessible files and drives" : status.workspace;
   token.textContent = status.token;
+  if (status.lastCommand) {
+    const current = status.lastCommand;
+    commandStatus.textContent = `${current.status}: ${current.command}`;
+    commandOutput.textContent = [current.stdout, current.stderr, current.error].filter(Boolean).join("\n") || "Command is running or produced no output.";
+  } else {
+    commandStatus.textContent = "No command received yet.";
+    commandOutput.textContent = "Waiting for terminal activity.";
+  }
   autoStart.checked = status.autoStart;
   updates.textContent = status.updateStatus;
   allowAllFiles.checked = status.allowAllFiles;

@@ -39,6 +39,8 @@ type RunResult = {
   stdout?: string;
   stderr?: string;
   error?: string | null;
+  commandId?: string;
+  agentStatus?: AgentHealth;
   requester?: {
     id?: string;
     email?: string;
@@ -48,9 +50,9 @@ type RunResult = {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
-const EXPECTED_DESKTOP_AGENT_VERSION = "0.2.0";
+const EXPECTED_DESKTOP_AGENT_VERSION = "0.3.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "E25999089FE326BDF5F1ECE5038A8088D413E9BA25CBF276AC9D00B61A671E02";
+const WINDOWS_AGENT_SHA256 = "12FCB656B42CCE3DCB08075D4EC8A0C089657F1A98513A9B7EDB0321A5446C4B";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -256,10 +258,21 @@ export default function LocalAgentPage() {
         body: JSON.stringify({ command, approval: approval.trim(), requester }),
       }));
       setResult(data);
+      if (data.agentStatus) {
+        setHealth(data.agentStatus);
+      }
       setStatus(data.ok ? "Command finished." : data.error || "Command failed.");
       setApproval("");
     } catch (error) {
-      setStatus(explainError(error));
+      const message = explainError(error);
+      setResult({
+        ok: false,
+        code: 1,
+        stdout: "",
+        stderr: "",
+        error: message,
+      });
+      setStatus(message);
     } finally {
       setIsRunning(false);
     }

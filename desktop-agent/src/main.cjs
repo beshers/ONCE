@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.OCNE_DESKTOP_AGENT_PORT || 48731);
 const OCNE_WEBSITE_URL = process.env.OCNE_WEBSITE_URL || "https://ocne.onrender.com";
@@ -27,6 +27,7 @@ let config = loadConfig();
 let isQuitting = false;
 let updateStatus = "Updates have not been checked yet.";
 let lastWebsiteSeenAt = null;
+let lastCommand = null;
 
 function loadConfig() {
   try {
@@ -66,6 +67,7 @@ function statusPayload() {
     allowAllFiles: config.allowAllFiles,
     autoStart: config.autoStart !== false,
     pairedAccount: config.pairedAccount,
+    lastCommand,
     updateStatus,
     tokenRequired: true,
     approvalRequired: false,
@@ -149,6 +151,11 @@ function rememberWebsitePairing(requester) {
     config.pairedAccount = requester;
     saveConfig();
   }
+  updateWindow();
+}
+
+function setLastCommand(nextCommand) {
+  lastCommand = nextCommand;
   updateWindow();
 }
 
@@ -236,8 +243,37 @@ function startServer() {
         const requester = requesterFrom(req, body);
         rememberWebsitePairing(requester);
 
+        const commandId = crypto.randomUUID();
+        setLastCommand({
+          id: commandId,
+          command,
+          status: "running",
+          requester,
+          startedAt: new Date().toISOString(),
+          finishedAt: null,
+          ok: null,
+          code: null,
+          stdout: "",
+          stderr: "",
+          error: null,
+        });
+
         const result = await runCommand(command);
-        sendJson(res, 200, { ...result, requester });
+        setLastCommand({
+          id: commandId,
+          command,
+          status: result.ok ? "finished" : "failed",
+          requester,
+          startedAt: lastCommand?.startedAt || new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          ok: result.ok,
+          code: result.code,
+          stdout: String(result.stdout || "").slice(-6000),
+          stderr: String(result.stderr || "").slice(-6000),
+          error: result.error,
+        });
+
+        sendJson(res, 200, { ...result, requester, commandId, agentStatus: statusPayload() });
         return;
       }
 
