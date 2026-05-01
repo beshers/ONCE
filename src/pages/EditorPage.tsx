@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmbeddedTerminal from "@/components/EmbeddedTerminal";
 import CollaborativeCodeEditor from "@/components/CollaborativeCodeEditor";
+import DeviceEditorBridge from "@/components/DeviceEditorBridge";
 import LocalAgentPage from "@/pages/LocalAgentPage";
 import { toast } from "sonner";
 import {
@@ -585,6 +586,18 @@ export default function EditorPage() {
             </div>
           </div>
           </div>
+          {project?.localFilesEnabled ? (
+            <DeviceEditorBridge
+              fileName={activeFile?.name}
+              content={code}
+              onImport={setCode}
+              disabled={!activeFile}
+            />
+          ) : (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs leading-5 text-amber-100/80">
+              Enable local files in Project Settings to sync this live editor with the user's device.
+            </div>
+          )}
           <div className="rounded-xl border border-white/5 bg-[#13131f] p-4">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
