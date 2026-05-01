@@ -39,6 +39,7 @@ python_installer.exe
 # Build outputs
 dist/
 build/
+desktop-agent/release/
 runtime/
 # Test coverage
 coverage/

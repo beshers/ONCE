@@ -40,7 +40,8 @@ type RunResult = {
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
-const EXPECTED_AGENT_VERSION = "0.5.0";
+const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
+const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -97,7 +98,8 @@ export default function LocalAgentPage() {
   const tokenRequired = health?.tokenRequired !== false;
   const approvalRequired = health?.approvalRequired !== false;
   const needsWebsiteApproval = approvalRequired && health?.approvalMode !== "terminal";
-  const versionIsCurrent = health?.version === EXPECTED_AGENT_VERSION;
+  const expectedAgentVersion = health?.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION;
+  const versionIsCurrent = health?.version === expectedAgentVersion;
   const requester = useMemo(() => {
     const name =
       (typeof (user as any)?.fullName === "string" && (user as any).fullName) ||
@@ -144,11 +146,11 @@ export default function LocalAgentPage() {
         setStayConnected(true);
       }
       setStatus(
-        data.version === EXPECTED_AGENT_VERSION
+        data.version === (data.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION)
           ? data.approvalRequired === false
             ? "Connected. Direct mode is enabled, commands run without APPROVE."
             : "Connected. Type APPROVE in the website before running a command."
-          : `Connected to agent ${data.version}. Restart the agent to use ${EXPECTED_AGENT_VERSION}.`,
+          : `Connected to agent ${data.version}. Restart the agent to use ${data.name === "OCNE Desktop Agent" ? EXPECTED_DESKTOP_AGENT_VERSION : EXPECTED_LOCAL_AGENT_VERSION}.`,
       );
     } catch (error) {
       setHealth(null);
@@ -243,9 +245,9 @@ export default function LocalAgentPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
-              Start the local agent on the user's computer:
-              <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run agent:direct</pre>
-              Direct mode runs commands without the website APPROVE box after the user connects.
+              Start OCNE Desktop Agent on the user's computer, then paste its local URL and pairing token here.
+              <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run desktop-agent</pre>
+              Developer fallback: <code>npm run agent:direct</code>
             </div>
             <Input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} className="border-white/10 bg-black/30 text-white" />
             {tokenRequired && (
@@ -281,7 +283,7 @@ export default function LocalAgentPage() {
               <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
                 <div>Agent: {health.name}</div>
                 <div className={versionIsCurrent ? "text-emerald-300" : "text-amber-200"}>
-                  Version: {health.version} {versionIsCurrent ? "(current)" : `(expected ${EXPECTED_AGENT_VERSION})`}
+                  Version: {health.version} {versionIsCurrent ? "(current)" : `(expected ${expectedAgentVersion})`}
                 </div>
                 <div>URL: {health.url || normalizedEndpoint}</div>
                 <div>Port: {health.port || "unknown"}</div>

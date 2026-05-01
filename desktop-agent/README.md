@@ -1,0 +1,59 @@
+# OCNE Desktop Agent
+
+OCNE Desktop Agent is the planned Windows/macOS app that connects the OCNE website to a user's computer.
+
+This is the first desktop scaffold. It is separate from the web app so the website deployment stays stable.
+
+## What It Does
+
+- Opens a desktop window.
+- Starts a local server on `http://127.0.0.1:48731`.
+- Accepts requests only from OCNE origins.
+- Uses a pairing token.
+- Runs terminal commands directly after pairing.
+- Can allow either a selected workspace folder or all files/drives the computer user can access.
+
+## Run In Development
+
+From this folder:
+
+```powershell
+cd D:\xampp\php-backend\desktop-agent
+npm install
+npm run dev
+```
+
+The app will show:
+
+- Agent URL
+- pairing token
+- access mode
+- workspace
+
+## Build Installers
+
+Windows:
+
+```powershell
+npm run package:win
+```
+
+macOS:
+
+```bash
+npm run package:mac
+```
+
+## Security Model
+
+The desktop agent only listens on `127.0.0.1`, so it is not exposed directly to the internet.
+
+It accepts browser requests only from:
+
+- `https://ocne.onrender.com`
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+
+Every command requires the pairing token. Commands run with the permissions of the local Windows/macOS user.
+
+For a production release, add code signing, auto-update, and a first-run pairing screen before publishing installers.

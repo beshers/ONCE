@@ -15,6 +15,7 @@
     "agent": "node local-agent/agent.cjs",
     "agent:no-token": "node -e \"process.env.OCNE_AGENT_NO_TOKEN='true'; require('./local-agent/agent.cjs')\"",
     "agent:direct": "node -e \"process.env.OCNE_AGENT_NO_TOKEN='true'; process.env.OCNE_AGENT_REQUIRE_APPROVAL='false'; require('./local-agent/agent.cjs')\"",
+    "desktop-agent": "npm --prefix desktop-agent run dev",
     "check": "tsc -b",
     "format": "prettier --write .",
     "test": "vitest run",

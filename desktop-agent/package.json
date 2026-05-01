@@ -1,0 +1,38 @@
+{
+  "name": "ocne-desktop-agent",
+  "version": "0.1.0",
+  "private": true,
+  "author": "OCNE",
+  "description": "OCNE Desktop Agent for connecting the OCNE website to a user's computer.",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "package:win": "electron-builder --win nsis",
+    "package:mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.ocne.desktop-agent",
+    "productName": "OCNE Desktop Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "ui/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}
