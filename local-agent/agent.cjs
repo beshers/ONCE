@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline");
 
-const VERSION = "0.5.0";
+const VERSION = "0.5.1";
 
 function cleanEnv(name, fallback) {
   const value = process.env[name];
@@ -15,12 +15,33 @@ function cleanEnv(name, fallback) {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
+function readEnvFlag(name, fallback) {
+  const normalized = cleanEnv(name, fallback ? "true" : "false").toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+function readApprovalConfig() {
+  const rawMode = cleanEnv("OCNE_AGENT_APPROVAL", "web").toLowerCase();
+  const disabledByMode = ["direct", "none", "off", "false", "no", "disabled"].includes(rawMode);
+  const approvalRequired = !disabledByMode && readEnvFlag("OCNE_AGENT_REQUIRE_APPROVAL", true);
+  const approvalMode = rawMode === "terminal" ? "terminal" : "web";
+
+  return {
+    approvalMode,
+    approvalRequired,
+    rawApprovalMode: rawMode,
+  };
+}
+
 const PORT = Number(cleanEnv("OCNE_AGENT_PORT", "48731"));
-const ALLOW_NO_TOKEN = cleanEnv("OCNE_AGENT_NO_TOKEN", "false").toLowerCase() === "true";
+const ALLOW_NO_TOKEN = readEnvFlag("OCNE_AGENT_NO_TOKEN", false);
 const TOKEN = ALLOW_NO_TOKEN ? "" : cleanEnv("OCNE_AGENT_TOKEN", crypto.randomBytes(18).toString("hex"));
 const WORKSPACE = path.resolve(cleanEnv("OCNE_AGENT_WORKSPACE", process.cwd()));
-const REQUIRE_APPROVAL = cleanEnv("OCNE_AGENT_REQUIRE_APPROVAL", "true").toLowerCase() !== "false";
-const APPROVAL_MODE = cleanEnv("OCNE_AGENT_APPROVAL", "web").toLowerCase() === "terminal" ? "terminal" : "web";
+const APPROVAL_CONFIG = readApprovalConfig();
+const REQUIRE_APPROVAL = APPROVAL_CONFIG.approvalRequired;
+const APPROVAL_MODE = APPROVAL_CONFIG.approvalMode;
 const ALLOWED_USER_ID = cleanEnv("OCNE_AGENT_ALLOWED_USER_ID", "");
 const ALLOWED_USER_EMAIL = cleanEnv("OCNE_AGENT_ALLOWED_USER_EMAIL", "").toLowerCase();
 const HOST = "127.0.0.1";

@@ -44,6 +44,20 @@ For the normal terminal feeling, where the user starts the agent once and the we
 npm run agent:direct
 ```
 
+You can also disable approval explicitly with either setting:
+
+```powershell
+$env:OCNE_AGENT_REQUIRE_APPROVAL="false"
+npm run agent
+```
+
+```powershell
+$env:OCNE_AGENT_APPROVAL="direct"
+npm run agent
+```
+
+Accepted off values are `false`, `0`, `no`, and `off`. `OCNE_AGENT_APPROVAL` also accepts `direct`, `none`, and `disabled`. Restart the agent after changing these values, then reconnect the website so it reads the new health status.
+
 Direct mode runs commands with the same file permissions as the local Windows user. That means commands can read and change files anywhere that Windows user can access, including other drives when the command uses an absolute path like `D:\folder`.
 
 Use this only when the user trusts the connected OCNE website session.
