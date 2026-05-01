@@ -47,6 +47,40 @@ export default function CollaborativeCodeEditor({
     valueRef.current = value;
   }, [value]);
 
+  useEffect(() => {
+    const styleId = "ocne-monaco-collab-cursors";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      .yRemoteSelection {
+        opacity: 0.22;
+      }
+      .yRemoteSelectionHead {
+        position: absolute;
+        border-left: 2px solid;
+        border-color: inherit;
+        height: 100%;
+        box-sizing: border-box;
+      }
+      .yRemoteSelectionHead::after {
+        content: attr(data-user-name);
+        position: absolute;
+        top: -1.35rem;
+        left: -2px;
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: currentColor;
+        color: #020617;
+        font-size: 10px;
+        font-weight: 700;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
   const roomName = useMemo(() => `project-${projectId}-file-${fileId}`, [projectId, fileId]);
   const displayName =
     (user as any)?.name ||

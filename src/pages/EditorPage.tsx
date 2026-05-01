@@ -17,7 +17,8 @@ import {
   FileCode, Folder, Save, Play, MessageSquare,
   Plus, Trash2, Clock,
   Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
-  ChevronDown, ChevronRight, FolderPlus, Radio, Activity
+  ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
+  Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown
 } from "lucide-react";
 
 const languages = [
@@ -43,6 +44,9 @@ export default function EditorPage() {
   const [reviewText, setReviewText] = useState("");
   const [reviewLineStart, setReviewLineStart] = useState(0);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [followUserId, setFollowUserId] = useState<string | null>(null);
+  const [liveChatMessage, setLiveChatMessage] = useState("");
+  const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
 
   const utils = trpc.useUtils();
 
@@ -137,6 +141,11 @@ export default function EditorPage() {
   const folders = (files || []).filter((item) => item.type === "folder");
   const liveUsers = liveState?.users || [];
   const liveActivity = liveState?.activity || [];
+  const followedUser = liveUsers.find((user) => user.userId === followUserId);
+  const canShowPreview = ["html", "css", "javascript"].includes(activeFile?.language || "");
+  const previewDocument = activeFile?.language === "html"
+    ? code
+    : `<!doctype html><html><head><style>${activeFile?.language === "css" ? code : ""}</style></head><body><div id="app"></div><script>${activeFile?.language === "javascript" ? code : ""}</script></body></html>`;
 
   useEffect(() => {
     if (activeFile) {
@@ -188,6 +197,21 @@ export default function EditorPage() {
   const handleRun = () => {
     setActiveTab("terminal");
     toast.info("Use the Terminal Agent panel to run this project on the connected computer.");
+  };
+
+  const sendLiveChat = (line?: number) => {
+    const text = liveChatMessage.trim();
+    if (!text) return;
+    setLiveChatMessages((messages) => [
+      ...messages,
+      {
+        id: Date.now(),
+        author: "You",
+        text,
+        line,
+      },
+    ]);
+    setLiveChatMessage("");
   };
 
   // Line numbers for the textarea
@@ -530,7 +554,7 @@ export default function EditorPage() {
         </div>
 
         <TabsContent value="editor" className="mt-0 min-h-0 flex-1 space-y-4 overflow-auto">
-          <div className="grid min-h-[560px] gap-0 overflow-hidden rounded-xl border border-white/10 bg-[#0b0f19] lg:grid-cols-[260px_1fr]">
+          <div className="grid min-h-[620px] gap-0 overflow-hidden rounded-xl border border-white/10 bg-[#0b0f19] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
           {/* File Explorer */}
           <div className="flex min-h-[260px] flex-col border-b border-white/10 bg-[#101827] lg:border-b-0 lg:border-r">
             <div className="flex min-h-11 items-center justify-between gap-1 border-b border-white/10 px-3">
@@ -675,6 +699,116 @@ export default function EditorPage() {
               {isModified && <span className="text-amber-400">unsaved</span>}
             </div>
           </div>
+          <aside className="flex min-h-[360px] flex-col border-t border-white/10 bg-[#101827] xl:border-l xl:border-t-0">
+            <div className="border-b border-white/10 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Live room</div>
+                <Badge className={project?.collaborationMode === "solo" ? "bg-slate-500/10 text-slate-300" : "bg-emerald-500/10 text-emerald-300"}>
+                  <Radio className="mr-1 h-3 w-3" /> {liveUsers.length} online
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Voice rooms need a WebRTC/SFU provider before real calls can start.")}>
+                  <Mic className="mr-2 h-4 w-4" /> Voice
+                </Button>
+                <Button size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Video rooms need a WebRTC/SFU provider before real calls can start.")}>
+                  <Video className="mr-2 h-4 w-4" /> Video
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-3 border-b border-white/10 p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                <Eye className="h-4 w-4 text-cyan-300" /> Follow mode
+              </div>
+              <Select value={followUserId || "off"} onValueChange={(value) => setFollowUserId(value === "off" ? null : value)}>
+                <SelectTrigger className="border-white/10 bg-white/[0.04] text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1a1a2e] border-white/10">
+                  <SelectItem value="off" className="text-white">Follow nobody</SelectItem>
+                  {liveUsers.map((user) => (
+                    <SelectItem key={user.userId} value={user.userId} className="text-white">
+                      Follow {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs leading-5 text-slate-500">
+                {followedUser ? `Ready to follow ${followedUser.name} while they teach or review.` : "Pick a leader so the session can sync file focus and view position."}
+              </p>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-white">Participants</div>
+                {liveUsers.length === 0 ? (
+                  <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-500">
+                    Collaborators appear here with color-coded Monaco cursors when they join this file.
+                  </p>
+                ) : liveUsers.map((user, index) => (
+                  <div key={user.userId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ["#22d3ee", "#a78bfa", "#34d399", "#f59e0b"][index % 4] }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs text-white">{user.name}</div>
+                      <div className="truncate text-[10px] text-slate-500">{user.status} {user.activeFileName || "workspace"}</div>
+                    </div>
+                    <Badge variant="outline" className="border-white/10 text-[10px] text-slate-400">
+                      {collaborators?.find((item) => item.collab.userId === user.userId)?.collab.role || "viewer"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <MessageSquare className="h-4 w-4 text-cyan-300" /> Live chat
+                </div>
+                <div className="max-h-36 space-y-2 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-2">
+                  {liveChatMessages.length === 0 ? (
+                    <p className="text-xs leading-5 text-slate-500">Chat and line annotations for this session appear here.</p>
+                  ) : liveChatMessages.map((message) => (
+                    <div key={message.id} className="text-xs leading-5 text-slate-300">
+                      <span className="font-medium text-cyan-200">{message.author}</span>
+                      {message.line && <span className="text-slate-500"> line {message.line}</span>}: {message.text}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <Input
+                    value={liveChatMessage}
+                    onChange={(event) => setLiveChatMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") sendLiveChat();
+                    }}
+                    placeholder="Message or note..."
+                    className="border-white/10 bg-white/[0.04] text-white"
+                  />
+                  <Button size="icon" onClick={() => sendLiveChat()} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button size="sm" variant="ghost" className="w-full border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => sendLiveChat(reviewLineStart || lines.length)}>
+                  <StickyNote className="mr-2 h-4 w-4" /> Add line annotation
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <Monitor className="h-4 w-4 text-emerald-300" /> Browser preview
+                </div>
+                <div className="aspect-video overflow-hidden rounded-lg border border-white/10 bg-white">
+                  {canShowPreview ? (
+                    <iframe title="Live preview" srcDoc={previewDocument} className="h-full w-full bg-white" sandbox="allow-scripts" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-[#0b0f19] p-3 text-center text-xs leading-5 text-slate-500">
+                      Select an HTML, CSS, or JavaScript file to preview.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </aside>
           </div>
           {project?.localFilesEnabled ? (
             <DeviceEditorBridge
@@ -698,8 +832,8 @@ export default function EditorPage() {
           <div className="rounded-xl border border-white/5 bg-[#13131f] p-4">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-white">Editor Terminal</h3>
-                <p className="text-xs text-slate-500">Use the same in-app terminal without leaving the editor.</p>
+                <h3 className="text-sm font-semibold text-white">Shared Terminal</h3>
+                <p className="text-xs text-slate-500">Run commands through the paired device agent and let collaborators see the workflow.</p>
               </div>
               {project?.collaborationMode !== "solo" && (
                 <Badge className="bg-emerald-500/10 text-emerald-300">
@@ -708,7 +842,7 @@ export default function EditorPage() {
               )}
             </div>
             <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-              <EmbeddedTerminal compact title="Editor Terminal" />
+              <EmbeddedTerminal compact title="Shared Terminal" />
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                   <Activity className="h-4 w-4 text-cyan-300" /> Live activity
@@ -827,6 +961,14 @@ export default function EditorPage() {
           <div className="h-full bg-[#13131f] border border-white/5 rounded-xl p-4 overflow-auto">
             {activeFile ? (
               <div className="space-y-2">
+                <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Clock className="h-4 w-4 text-cyan-300" /> Time-travel versioning
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Every save creates a point in the file timeline. The next step is whole-project restore, but file restore is already available below.
+                  </p>
+                </div>
                 {(versions || []).length === 0 && (
                   <p className="text-sm text-slate-500 text-center py-8">No version history yet. Save your file to create versions.</p>
                 )}
@@ -878,14 +1020,30 @@ export default function EditorPage() {
           <div className="h-full bg-[#13131f] border border-white/5 rounded-xl p-4 overflow-auto">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-white">Project Collaborators</h3>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <ShieldCheck className="h-4 w-4 text-emerald-300" /> Project Collaborators
+                </h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Collaboration mode: {project?.collaborationMode || "solo"}
+                  Manage role-based access for editors, viewers, and admins.
                 </p>
               </div>
               <Badge variant="outline" className="border-white/10 text-slate-400">
                 {project?.collaborationMode === "solo" ? "Individual" : project?.collaborationMode === "team" ? "Invited team" : "Public collaboration"}
               </Badge>
+            </div>
+            <div className="mb-4 grid gap-3 md:grid-cols-3">
+              {[
+                ["Admin", "Can manage files, settings, collaborators, and terminal access.", Crown],
+                ["Editor", "Can create files, edit code, chat, annotate, and run allowed workflows.", FileCode],
+                ["Viewer", "Can read code, follow sessions, join calls, and review without writing.", Eye],
+              ].map(([role, text, Icon]) => (
+                <div key={String(role)} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                    <Icon className="h-4 w-4 text-cyan-300" /> {role}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
+                </div>
+              ))}
             </div>
             <div className="space-y-2">
               {(collaborators || []).map((c) => (
@@ -947,6 +1105,23 @@ export default function EditorPage() {
               >
                 <Bot className="mr-2 h-4 w-4" /> Ask agent
               </Button>
+              <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Wand2 className="h-4 w-4 text-violet-300" /> Collaborative AI autocomplete
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  The editor is prepared for team-aware suggestions that read the active file, project structure, and collaboration mode before proposing code.
+                </p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!project?.aiAgentEnabled || !activeFile}
+                  className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10"
+                  onClick={() => toast.info("Autocomplete UI is ready. Connect the AI completion endpoint to stream suggestions into Monaco.")}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" /> Suggest next code
+                </Button>
+              </div>
             </div>
             <div className="rounded-xl border border-white/5 bg-[#0d0d12] p-4">
               <h3 className="text-sm font-semibold text-white">Collaboration flow</h3>
@@ -961,6 +1136,21 @@ export default function EditorPage() {
                     <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
                   </div>
                 ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <GitPullRequest className="h-4 w-4 text-emerald-300" /> One-click Git integration
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Prepare a live session for GitHub, GitLab, or Bitbucket by saving the project first, then pushing through a connected provider.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {["GitHub", "GitLab", "Bitbucket"].map((provider) => (
+                    <Button key={provider} size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${provider} connection needs OAuth setup before pushing.`)}>
+                      {provider}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
