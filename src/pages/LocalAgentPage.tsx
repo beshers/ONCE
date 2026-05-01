@@ -43,7 +43,7 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "9A4CD0187664356874AC955D2A91F797B9E1DF2C938B317B39830278A300D4AF";
+const WINDOWS_AGENT_SHA256 = "F1900CB68020D597D5B74108150BE77F34466C891EFDFDE3E75AA984B5BE174B";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -229,7 +229,7 @@ export default function LocalAgentPage() {
           </div>
           <h1 className="mt-2 text-3xl font-semibold text-white">OCNE Local Agent</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Connect to the local agent running on this computer. Commands require a valid token and explicit approval before they run.
+            Pair OCNE with the desktop app running on this computer, then use the terminal with the computer permissions the user allows.
           </p>
         </div>
         <Badge className={health ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-200"}>
@@ -249,7 +249,7 @@ export default function LocalAgentPage() {
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
               <div className="text-sm font-semibold text-cyan-100">Install OCNE Desktop Agent</div>
               <p className="mt-2 text-xs leading-5 text-cyan-100/80">
-                Download the Windows app, open the installer, then copy the agent URL and pairing token from the desktop app into this page.
+                Download the Windows app, open the installer, then copy the internal browser bridge URL and pairing token from the desktop app into this page.
               </p>
               <a
                 href={WINDOWS_AGENT_DOWNLOAD}
@@ -267,7 +267,7 @@ export default function LocalAgentPage() {
               </div>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-slate-300">
-              Start OCNE Desktop Agent on the user's computer, then paste its local URL and pairing token here.
+              Start OCNE Desktop Agent on the user's computer, then paste its internal browser bridge URL and pairing token here.
               <pre className="mt-3 overflow-auto rounded-xl bg-black p-3 text-xs text-cyan-100">npm run desktop-agent</pre>
               Developer fallback: <code>npm run agent:direct</code>
             </div>

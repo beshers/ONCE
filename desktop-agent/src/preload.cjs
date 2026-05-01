@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("ocneAgent", {
   getStatus: () => ipcRenderer.invoke("agent:get-status"),
   setConfig: (config) => ipcRenderer.invoke("agent:set-config", config),
   checkUpdates: () => ipcRenderer.invoke("agent:check-updates"),
+  openWebsite: () => ipcRenderer.invoke("agent:open-website"),
   onStatus: (callback) => {
     ipcRenderer.on("agent-status", (_event, status) => callback(status));
   },

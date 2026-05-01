@@ -63,6 +63,31 @@
         color: #e2e8f0;
       }
 
+      .hero {
+        border-color: rgba(34, 211, 238, 0.24);
+        background: rgba(8, 145, 178, 0.14);
+      }
+
+      .status {
+        margin-top: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.13);
+        color: #86efac;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #22c55e;
+      }
+
       code {
         display: block;
         margin-top: 8px;
@@ -117,10 +142,18 @@
         This app connects the OCNE website to this computer. Keep it open while using the OCNE terminal.
       </p>
 
+      <section class="panel hero">
+        <div class="label">Website Connection</div>
+        <div class="value" id="website">Loading...</div>
+        <div class="status"><span class="dot"></span><span id="connectionStatus">Loading...</span></div>
+        <p>OCNE Website can use this desktop app after you pair it with the token below.</p>
+        <button id="openWebsite">Open OCNE Website</button>
+      </section>
+
       <section class="panel grid">
         <div>
-          <div class="label">Agent URL</div>
-          <div class="value" id="url">Loading...</div>
+          <div class="label">Internal Browser Bridge</div>
+          <div class="value" id="localBridge">Loading...</div>
         </div>
         <div>
           <div class="label">Computer</div>

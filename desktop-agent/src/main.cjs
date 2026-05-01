@@ -10,6 +10,7 @@ const path = require("node:path");
 const VERSION = "0.1.0";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.OCNE_DESKTOP_AGENT_PORT || 48731);
+const OCNE_WEBSITE_URL = process.env.OCNE_WEBSITE_URL || "https://ocne.onrender.com";
 const TOKEN = process.env.OCNE_DESKTOP_AGENT_TOKEN || crypto.randomBytes(18).toString("hex");
 const ALLOWED_ORIGINS = new Set([
   "https://ocne.onrender.com",
@@ -49,7 +50,10 @@ function statusPayload() {
     ok: true,
     name: "OCNE Desktop Agent",
     version: VERSION,
+    websiteUrl: OCNE_WEBSITE_URL,
+    connectionStatus: `Ready for ${OCNE_WEBSITE_URL}`,
     url: `http://${HOST}:${PORT}`,
+    localBridgeUrl: `http://${HOST}:${PORT}`,
     port: PORT,
     platform: process.platform,
     arch: os.arch(),
@@ -253,7 +257,7 @@ function createTray() {
   tray.setToolTip("OCNE Desktop Agent");
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open OCNE Desktop Agent", click: () => mainWindow?.show() },
-    { label: "Open OCNE Website", click: () => shell.openExternal("https://ocne.onrender.com/terminal") },
+    { label: "Open OCNE Website", click: () => shell.openExternal(`${OCNE_WEBSITE_URL}/terminal`) },
     { type: "separator" },
     { label: "Quit", click: () => app.quit() },
   ]));
@@ -312,6 +316,10 @@ ipcMain.handle("agent:check-updates", async () => {
   }
 
   await autoUpdater.checkForUpdates();
+  return { ...statusPayload(), token: TOKEN };
+});
+ipcMain.handle("agent:open-website", async () => {
+  await shell.openExternal(`${OCNE_WEBSITE_URL}/terminal`);
   return { ...statusPayload(), token: TOKEN };
 });
 
