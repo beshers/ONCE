@@ -18,7 +18,8 @@ import {
   Plus, Trash2, Clock,
   Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
   ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
-  Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown
+  Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown, Bug, Archive, Box, Camera,
+  Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw
 } from "lucide-react";
 
 const languages = [
@@ -47,6 +48,8 @@ export default function EditorPage() {
   const [followUserId, setFollowUserId] = useState<string | null>(null);
   const [liveChatMessage, setLiveChatMessage] = useState("");
   const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
+  const [challengeMinutes, setChallengeMinutes] = useState("30");
+  const [snippetDraft, setSnippetDraft] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -546,6 +549,9 @@ export default function EditorPage() {
           </TabsTrigger>
           <TabsTrigger value="local-agent" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <MonitorUp className="w-3.5 h-3.5 mr-1.5" /> Terminal Agent
+          </TabsTrigger>
+          <TabsTrigger value="advanced" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
+            <Bug className="w-3.5 h-3.5 mr-1.5" /> Advanced
           </TabsTrigger>
           <TabsTrigger value="settings" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <Settings className="w-3.5 h-3.5 mr-1.5" /> Settings
@@ -1169,6 +1175,207 @@ export default function EditorPage() {
               </p>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="advanced" className="flex-1 mt-0 overflow-auto">
+          <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <Bug className="h-4 w-4 text-cyan-300" /> Shared debugging console
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Coordinate breakpoints, stepping, watched variables, and stack traces for everyone in the session.
+                    </p>
+                  </div>
+                  <Badge className="bg-cyan-500/10 text-cyan-200">debug session</Badge>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {[
+                    ["Breakpoints", activeFile ? `${activeFile.name}: line ${reviewLineStart || 1}` : "Select a file first", Bug],
+                    ["Step control", "Step over, into, out", Play],
+                    ["Variables", "Inspect shared runtime state", Eye],
+                  ].map(([title, text, Icon]) => (
+                    <div key={String(title)} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                        <Icon className="h-4 w-4 text-cyan-300" /> {title}
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {["Add breakpoint", "Step over", "Inspect variables"].map((action) => (
+                    <Button key={action} size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${action} needs a debugger adapter service before it can run.`)}>
+                      {action}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                      <Archive className="h-4 w-4 text-emerald-300" /> Environment snapshots
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Save installed libraries, open files, terminal command history, and active collaboration state to resume later.
+                    </p>
+                  </div>
+                  <Button size="sm" className="bg-emerald-500 text-slate-950 hover:bg-emerald-400" onClick={() => toast.info("Snapshot metadata UI is ready. Persisting terminal/container state needs backend storage.")}>
+                    <Camera className="mr-2 h-4 w-4" /> Save snapshot
+                  </Button>
+                </div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {[
+                    ["Libraries", "package.json, lockfiles, Python requirements", Package],
+                    ["Open files", activeFile?.name || "No active file", FileCode],
+                    ["Terminal", "Last commands and output streams", MonitorUp],
+                  ].map(([title, text, Icon]) => (
+                    <div key={String(title)} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <Icon className="mb-2 h-4 w-4 text-emerald-300" />
+                      <div className="text-xs font-semibold text-white">{title}</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Box className="h-4 w-4 text-violet-300" /> Docker container support
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Start the same reproducible OS and runtime for every collaborator.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {[
+                    ["Node.js", "node:20 + npm", "npm install && npm run dev"],
+                    ["Python", "python:3.12 + pip", "pip install -r requirements.txt"],
+                    ["Go", "golang:1.23", "go test ./..."],
+                  ].map(([name, image, command]) => (
+                    <div key={name} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <div className="text-sm font-semibold text-white">{name}</div>
+                      <div className="mt-1 font-mono text-[10px] text-slate-500">{image}</div>
+                      <Button size="sm" variant="ghost" className="mt-3 w-full border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${command} will be available after container orchestration is connected.`)}>
+                        <Box className="mr-2 h-4 w-4" /> Start
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <GitMerge className="h-4 w-4 text-amber-300" /> Conflict resolution engine
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Warn when multiple users edit the same block and suggest safe merges before conflicts spread.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+                    <div className="text-xs font-semibold text-amber-100">Current risk</div>
+                    <p className="mt-1 text-xs leading-5 text-amber-100/75">
+                      {liveUsers.length > 1 ? `${liveUsers.length} users active. Same-block detection is ready for CRDT range metadata.` : "Low. Only one visible active editor."}
+                    </p>
+                  </div>
+                  <Button variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Merge suggestions need edit-range analytics from the collaboration provider.")}>
+                    <GitMerge className="mr-2 h-4 w-4" /> Analyze edits
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Trophy className="h-4 w-4 text-yellow-300" /> Challenge mode
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Leaders can create timed tasks with a live leaderboard for learners or teams.
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_110px]">
+                  <Input placeholder="Build a responsive navbar" className="border-white/10 bg-white/[0.04] text-white" />
+                  <Input value={challengeMinutes} onChange={(event) => setChallengeMinutes(event.target.value)} className="border-white/10 bg-white/[0.04] text-white" />
+                </div>
+                <Button className="mt-3 bg-yellow-400 text-slate-950 hover:bg-yellow-300" onClick={() => toast.info(`Challenge mode is staged for ${challengeMinutes || 30} minutes. Backend scoring comes next.`)}>
+                  <Timer className="mr-2 h-4 w-4" /> Start challenge
+                </Button>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <RotateCcw className="h-4 w-4 text-cyan-300" /> Code playback
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Generate a time-lapse of the coding session for students, reviews, and replay.
+                </p>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full w-2/5 bg-cyan-400" />
+                </div>
+                <Button size="sm" variant="ghost" className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Playback needs operation-log storage from the collaboration service.")}>
+                  <Play className="mr-2 h-4 w-4" /> Preview playback
+                </Button>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <PenTool className="h-4 w-4 text-pink-300" /> Whiteboard
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Sketch architecture, UI layouts, or debugging diagrams beside the code.
+                </p>
+                <div className="mt-4 aspect-video rounded-lg border border-dashed border-white/10 bg-black/20 p-3">
+                  <div className="h-full rounded border border-white/10 bg-[linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:18px_18px]" />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <BarChart3 className="h-4 w-4 text-emerald-300" /> Session analytics
+                </h3>
+                <div className="mt-4 grid gap-3">
+                  {[
+                    ["Lines changed", String(lines.length)],
+                    ["Active files", String(files?.filter((file) => file.type === "file").length || 0)],
+                    ["Live users", String(liveUsers.length)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between rounded-lg border border-white/10 bg-black/20 p-3">
+                      <span className="text-xs text-slate-500">{label}</span>
+                      <span className="text-sm font-semibold text-white">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Smartphone className="h-4 w-4 text-cyan-300" /> Mobile companion
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  A mobile-friendly companion view can follow the session, comment, and review while away from the computer.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Library className="h-4 w-4 text-violet-300" /> Custom snippet library
+                </h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Input value={snippetDraft} onChange={(event) => setSnippetDraft(event.target.value)} placeholder="Save boilerplate or helper code..." className="border-white/10 bg-white/[0.04] text-white" />
+                  <Button onClick={() => {
+                    toast.success(snippetDraft ? "Snippet staged for this project." : "Write a snippet first.");
+                    setSnippetDraft("");
+                  }} className="bg-violet-500 text-white hover:bg-violet-400">
+                    Save
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="settings" className="flex-1 mt-0">
