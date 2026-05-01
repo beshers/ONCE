@@ -43,7 +43,7 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.1.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "F3E96F853ACA3AC35DCE3FCF72F6712564902EBB6812EFBE0E215BF5FA63D907";
+const WINDOWS_AGENT_SHA256 = "0A95446E3456FF5A792AAB7A865F6D987A20BCB761D4162ABDA60EDDC818DA4A";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -249,7 +249,7 @@ export default function LocalAgentPage() {
             <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
               <div className="text-sm font-semibold text-cyan-100">Install OCNE Desktop Agent</div>
               <p className="mt-2 text-xs leading-5 text-cyan-100/80">
-                Download the Windows app and open the installer. It uses the normal system program folder by default, and the user can choose another folder during setup.
+                Download the Windows app and open the installer. During setup, the user can choose admin/all-users install or current-user install, and can change the installation folder.
               </p>
               <a
                 href={WINDOWS_AGENT_DOWNLOAD}
