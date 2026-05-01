@@ -50,9 +50,9 @@ type RunResult = {
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.0";
-const EXPECTED_DESKTOP_AGENT_VERSION = "0.3.0";
+const EXPECTED_DESKTOP_AGENT_VERSION = "0.4.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_AGENT_SHA256 = "12FCB656B42CCE3DCB08075D4EC8A0C089657F1A98513A9B7EDB0321A5446C4B";
+const WINDOWS_AGENT_SHA256 = "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
 
 async function readJsonResponse(response: Response) {
   const text = await response.text();
@@ -192,7 +192,19 @@ export default function LocalAgentPage() {
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
       let connectedData = data;
       setHealth(data);
+      let pairFailedMessage = "";
       if (data.name === "OCNE Desktop Agent" && data.tokenRequired !== false) {
+        if (!tokenValue) {
+          pairFailedMessage = "Desktop Agent reached. Paste the current pairing token from the desktop app.";
+        } else {
+          const paired = await pairDesktopAgent({ quiet: true });
+          if (paired) {
+            connectedData = paired;
+          } else {
+            pairFailedMessage = "Pairing failed. Copy the current pairing token from the desktop app and connect again.";
+          }
+        }
+      } else if (data.name === "OCNE Desktop Agent") {
         const paired = await pairDesktopAgent({ quiet: true });
         if (paired) {
           connectedData = paired;
@@ -206,7 +218,7 @@ export default function LocalAgentPage() {
           ? connectedData.name === "OCNE Desktop Agent"
             ? connectedData.websiteConnected
               ? "Desktop Agent paired. OCNE Website heartbeat is connected."
-              : "Desktop Agent reached. Paste the pairing token to complete the connection."
+              : pairFailedMessage || "Desktop Agent reached. Paste the pairing token to complete the connection."
             : connectedData.approvalRequired === false
               ? "Connected. Direct mode is enabled, commands run without APPROVE."
             : "Connected. Type APPROVE in the website before running a command."
@@ -246,6 +258,16 @@ export default function LocalAgentPage() {
     );
     setResult(null);
     try {
+      if (isDesktopAgent && tokenRequired) {
+        const paired = await pairDesktopAgent({ quiet: false });
+        if (!paired) {
+          const message = "Desktop Agent is not paired. Copy the current pairing token from the desktop app, reconnect, then run the command.";
+          setResult({ ok: false, code: 1, stdout: "", stderr: "", error: message });
+          setStatus(message);
+          return;
+        }
+      }
+
       const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/run`, {
         method: "POST",
         headers: {

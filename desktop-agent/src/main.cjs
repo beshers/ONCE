@@ -7,11 +7,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.OCNE_DESKTOP_AGENT_PORT || 48731);
 const OCNE_WEBSITE_URL = process.env.OCNE_WEBSITE_URL || "https://ocne.onrender.com";
-const TOKEN = process.env.OCNE_DESKTOP_AGENT_TOKEN || crypto.randomBytes(18).toString("hex");
 const ALLOWED_ORIGINS = new Set([
   "https://ocne.onrender.com",
   "http://localhost:5173",
@@ -24,10 +23,16 @@ let mainWindow;
 let tray;
 let server;
 let config = loadConfig();
+const TOKEN = process.env.OCNE_DESKTOP_AGENT_TOKEN || config.pairingToken || crypto.randomBytes(18).toString("hex");
 let isQuitting = false;
 let updateStatus = "Updates have not been checked yet.";
 let lastWebsiteSeenAt = null;
 let lastCommand = null;
+
+if (!config.pairingToken && !process.env.OCNE_DESKTOP_AGENT_TOKEN) {
+  config = { ...config, pairingToken: TOKEN };
+  saveConfig();
+}
 
 function loadConfig() {
   try {
@@ -36,6 +41,7 @@ function loadConfig() {
     return {
       allowAllFiles: false,
       autoStart: true,
+      pairingToken: null,
       workspace: os.homedir(),
       pairedAccount: null,
     };

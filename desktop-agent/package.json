@@ -1,6 +1,6 @@
 {
   "name": "ocne-desktop-agent",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "author": "OCNE",
   "description": "OCNE Desktop Agent for connecting the OCNE website to a user's computer.",
