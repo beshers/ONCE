@@ -509,9 +509,9 @@ export default function ChatPage() {
 
   const localVideoClassName = `h-full w-full object-cover transition-all ${backgroundBlur ? "contrast-105 saturate-110" : ""}`;
   const meetingControlButtonClass =
-    "min-h-11 h-auto w-full justify-start rounded-2xl border border-white/10 bg-[#16181c] px-3 py-2 text-left leading-snug whitespace-normal text-slate-200 hover:bg-white/10 [&_svg]:shrink-0";
+    "min-h-11 h-auto w-full justify-start rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-left leading-snug whitespace-normal text-slate-200 shadow-sm shadow-black/20 hover:border-cyan-500/30 hover:bg-cyan-500/[0.08] [&_svg]:shrink-0";
   const meetingOptionButtonClass =
-    "min-h-10 h-auto w-full justify-start rounded-xl px-3 py-2 text-left text-xs leading-snug whitespace-normal";
+    "min-h-10 h-auto w-full justify-start rounded-xl px-3 py-2 text-left text-xs leading-snug whitespace-normal transition-colors";
 
   function handleIncomingOffer(senderId: string, meta: EventMeta) {
     if (!meta.callId || !meta.signalData || !meta.mode) return;
@@ -1701,9 +1701,9 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1500px] flex-col gap-3 bg-black p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
-      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-black p-0 shadow-none lg:h-full lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
-        <div className="border-b border-white/10 px-4 py-4">
+    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1540px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#101624_0%,#070a10_42%,#05070b_100%)] p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
+      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:h-full lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
+        <div className="border-b border-white/10 bg-white/[0.025] px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">X-style Spaces</div>
@@ -1718,15 +1718,15 @@ export default function ChatPage() {
             </Badge>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-2xl border border-white/10 bg-[#16181c] px-2 py-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-2 shadow-sm shadow-black/20">
               <div className="text-base font-semibold text-white">{(rooms || []).length + 1}</div>
               <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Rooms</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-[#16181c] px-2 py-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-2 shadow-sm shadow-black/20">
               <div className="text-base font-semibold text-white">{threadOptions.length}</div>
               <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">DMs</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-[#16181c] px-2 py-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-2 shadow-sm shadow-black/20">
               <div className="text-base font-semibold text-white">{participants.length}</div>
               <div className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Live</div>
             </div>
@@ -1735,7 +1735,7 @@ export default function ChatPage() {
 
         <ScrollArea className="max-h-[460px] lg:h-[calc(100%-196px)] lg:max-h-none">
           <div className="space-y-5 p-3">
-            <div className="space-y-3 rounded-3xl border border-white/10 bg-[#16181c] p-3">
+            <div className="space-y-3 rounded-3xl border border-cyan-500/15 bg-[#101722] p-3 shadow-lg shadow-black/20">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-semibold text-white">Create room</div>
@@ -1747,7 +1747,7 @@ export default function ChatPage() {
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 placeholder="War room / sprint room"
-                className="h-11 rounded-full border-white/10 bg-black text-white placeholder:text-slate-600"
+                className="h-11 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -1783,9 +1783,9 @@ export default function ChatPage() {
                 value={inviteSearch}
                 onChange={(e) => setInviteSearch(e.target.value)}
                 placeholder="Search people to invite"
-                className="h-11 rounded-full border-white/10 bg-black text-white placeholder:text-slate-600"
+                className="h-11 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
-              <div className="max-h-40 space-y-1 overflow-auto rounded-2xl border border-white/10 bg-black p-1">
+              <div className="max-h-40 space-y-1 overflow-auto rounded-2xl border border-white/10 bg-[#070a10] p-1">
                 {inviteCandidates.length === 0 && (
                   <div className="px-2 py-2 text-xs text-slate-500">No people found yet.</div>
                 )}
@@ -1836,8 +1836,8 @@ export default function ChatPage() {
                   onClick={() => openRoom("global")}
                   className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
                     activeRoom === "global"
-                      ? "border-white/10 bg-white text-black"
-                      : "border-transparent text-slate-300 hover:bg-[#16181c] hover:text-white"
+                      ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
+                      : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
                   }`}
                 >
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/10">
@@ -1855,8 +1855,8 @@ export default function ChatPage() {
                     onClick={() => openRoom(String(room.id))}
                     className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
                       activeRoom === String(room.id)
-                        ? "border-white/10 bg-white text-black"
-                        : "border-transparent text-slate-300 hover:bg-[#16181c] hover:text-white"
+                        ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
+                        : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
                     }`}
                   >
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
@@ -1886,7 +1886,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 {(publicRooms || []).map((room) => (
-                  <div key={room.id} className="rounded-3xl border border-white/10 bg-[#16181c] px-3 py-3">
+                  <div key={room.id} className="rounded-3xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-sm shadow-black/20">
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300">
                         <Radio className="h-4 w-4" />
@@ -1921,7 +1921,7 @@ export default function ChatPage() {
                 value={threadSearch}
                 onChange={(e) => setThreadSearch(e.target.value)}
                 placeholder="Search people or message preview..."
-                className="mt-2 h-11 rounded-full border-white/10 bg-[#16181c] text-white placeholder:text-slate-600"
+                className="mt-2 h-11 rounded-full border-white/10 bg-white/[0.04] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
               <div className="mt-2 space-y-1.5">
                 {threadOptions.length === 0 && (
@@ -1937,8 +1937,8 @@ export default function ChatPage() {
                       onClick={() => openDirectMessage(thread.id)}
                       className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
                         active
-                          ? "border-white/10 bg-white text-black"
-                          : "border-transparent text-slate-300 hover:bg-[#16181c] hover:text-white"
+                          ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
+                          : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
                       }`}
                     >
                       <Avatar className="h-8 w-8">
@@ -1974,7 +1974,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-white/10 bg-[#16181c] p-3">
+            <div className="space-y-2 rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-white">Alerts</div>
                 <Bell className="h-4 w-4 text-amber-300" />
@@ -1992,13 +1992,13 @@ export default function ChatPage() {
               </Button>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-white/10 bg-[#16181c] p-3">
+            <div className="space-y-2 rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
               <div className="text-xs font-semibold text-white">Breakout rooms</div>
               <Input
                 value={breakoutName}
                 onChange={(e) => setBreakoutName(e.target.value)}
                 placeholder="Frontend / Backend / QA"
-                className="h-11 rounded-full border-white/10 bg-black text-white placeholder:text-slate-600"
+                className="h-11 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
               <Button onClick={handleCreateBreakout} disabled={!breakoutName.trim() || createRoom.isPending} variant="ghost" className="h-11 w-full rounded-full border border-white/10 text-slate-200 hover:bg-white/10">
                 <Users className="mr-2 h-4 w-4" />
@@ -2039,8 +2039,8 @@ export default function ChatPage() {
       </Card>
 
       <div className="min-w-0 flex-1 lg:h-full">
-        <Card className="min-h-full gap-0 overflow-hidden rounded-3xl border border-white/10 bg-black p-0 shadow-none lg:h-full lg:rounded-none lg:border-y-0 lg:border-r-0">
-          <div className="sticky top-0 z-10 border-b border-white/10 bg-black/90 px-3 py-3 backdrop-blur sm:px-5 sm:py-4">
+        <Card className="min-h-full gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#080b12] p-0 shadow-2xl shadow-black/30 lg:h-full lg:rounded-none lg:border-y-0 lg:border-r-0">
+          <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/95 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12">
@@ -2087,19 +2087,19 @@ export default function ChatPage() {
                     <Phone className="mr-2 h-4 w-4" />
                     {roomMediaMode === "voice" ? "Voice On" : "Voice"}
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={() => handleStartCall("video")}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("video")}>
                     <Video className="mr-2 h-4 w-4" />
                     {roomMediaMode === "video" ? "Video On" : "Video"}
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={() => handleStartCall("screen")}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("screen")}>
                     <ScreenShare className="mr-2 h-4 w-4" />
                     {roomMediaMode === "screen" ? "Stop Share" : "Share Screen"}
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={handleRemoteControl}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={handleRemoteControl}>
                     <Maximize2 className="mr-2 h-4 w-4" />
                     Remote Control
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={handleSendGuestLink}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={handleSendGuestLink}>
                     <Link2 className="mr-2 h-4 w-4" />
                     Guest Link
                   </Button>
@@ -2116,17 +2116,17 @@ export default function ChatPage() {
                     <Phone className="mr-2 h-4 w-4" />
                     Call this person
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={() => handleStartCall("video")} disabled={!canCallCurrentDirectUser}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("video")} disabled={!canCallCurrentDirectUser}>
                     <Video className="mr-2 h-4 w-4" />
                     Video call
                   </Button>
                   {(callState === "connected" || callState === "connecting" || callState === "outgoing") && (
                     <>
-                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={() => handleStartCall("screen")}>
+                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("screen")}>
                         <ScreenShare className="mr-2 h-4 w-4" />
                         {isSharingScreen ? "Stop share" : "Share screen"}
                       </Button>
-                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={handleRemoteControl}>
+                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={handleRemoteControl}>
                         <Maximize2 className="mr-2 h-4 w-4" />
                         Remote Control
                       </Button>
@@ -2136,7 +2136,7 @@ export default function ChatPage() {
                       </Button>
                     </>
                   )}
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]" onClick={handleSendGuestLink}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={handleSendGuestLink}>
                     <Link2 className="mr-2 h-4 w-4" />
                     Guest Link
                   </Button>
@@ -2146,12 +2146,12 @@ export default function ChatPage() {
 
             {!directRecipientId && (
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6">
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{recording ? "Recording on" : "Recording off"}</Badge>
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{noiseCancel ? "Noise cancellation" : "Raw audio"}</Badge>
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{backgroundBlur ? "Background blur" : "Clear background"}</Badge>
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{pipMode ? "PiP enabled" : "PiP hidden"}</Badge>
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{bandwidthMode}</Badge>
-                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-[#16181c] py-1.5 text-slate-300">{callBackground}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{recording ? "Recording on" : "Recording off"}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{noiseCancel ? "Noise cancellation" : "Raw audio"}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{backgroundBlur ? "Background blur" : "Clear background"}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{pipMode ? "PiP enabled" : "PiP hidden"}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{bandwidthMode}</Badge>
+                <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{callBackground}</Badge>
               </div>
             )}
             {actionError && (
@@ -2162,9 +2162,9 @@ export default function ChatPage() {
           </div>
 
           <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_390px]">
-            <div className="space-y-4 border-t border-white/10 bg-black p-3 sm:p-4 lg:border-l 2xl:border-t-0">
+            <div className="space-y-4 border-t border-white/10 bg-[#080b12] p-3 sm:p-4 lg:border-l 2xl:border-t-0">
               <div className="grid gap-4 2xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-3xl border border-white/10 bg-black p-3 sm:p-4 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
+                <div className="rounded-3xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4 2xl:rounded-2xl">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Meeting controls</div>
@@ -2199,7 +2199,7 @@ export default function ChatPage() {
                     </Button>
                   </div>
                   {roomMediaMode !== "idle" && (
-                    <div className="mt-4 overflow-hidden rounded-3xl border border-white/10 bg-[#16181c]">
+                    <div className="mt-4 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] shadow-lg shadow-black/20">
                       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
                         <div>
                           <div className="text-xs font-semibold text-white">
@@ -2250,7 +2250,7 @@ export default function ChatPage() {
                     </a>
                   )}
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-white/10 bg-[#16181c] p-3">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Bandwidth mode</div>
                       <div className="grid grid-cols-1 gap-2">
                         {["adaptive", "quality", "bandwidth"].map((mode) => (
@@ -2267,7 +2267,7 @@ export default function ChatPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="rounded-3xl border border-white/10 bg-[#16181c] p-3">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Call background</div>
                       <div className="grid grid-cols-1 gap-2">
                         {["Nebula IDE", "Terminal Dark", "Graph Paper"].map((bg) => (
@@ -2289,7 +2289,7 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-black p-3 sm:p-4 2xl:rounded-none 2xl:border-x-0 2xl:border-t-0">
+                <div className="rounded-3xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4 2xl:rounded-2xl">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Live transcript</div>
@@ -2301,9 +2301,9 @@ export default function ChatPage() {
                     value={transcriptSearch}
                     onChange={(e) => setTranscriptSearch(e.target.value)}
                     placeholder="Search transcript..."
-                    className="mt-3 border-white/10 bg-black/20 text-white"
+                    className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                   />
-                  <ScrollArea className="mt-3 h-[220px] rounded-xl border border-white/5 bg-black/20 p-3">
+                  <ScrollArea className="mt-3 h-[220px] rounded-xl border border-white/10 bg-[#080b12] p-3">
                     <div className="space-y-3">
                       {transcriptEntries.length === 0 && (
                         <div className="text-sm text-slate-500">No transcript matches yet.</div>
@@ -2338,8 +2338,8 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              <div className="bg-black">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-y border-white/10 px-3 py-3 sm:px-4">
+              <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17] shadow-xl shadow-black/25">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.025] px-3 py-3 sm:px-4">
                   <div>
                     <div className="text-sm font-semibold text-white">Room stream</div>
                     <div className="text-[11px] text-slate-500">
@@ -2350,7 +2350,7 @@ export default function ChatPage() {
                     {participants.length} active
                   </Badge>
                 </div>
-                <ScrollArea className="h-[55vh] min-h-[360px] px-3 py-4 sm:px-4 lg:h-[520px]">
+                <ScrollArea className="h-[55vh] min-h-[360px] bg-[#080b12] px-3 py-4 sm:px-4 lg:h-[520px]">
                   <div className="space-y-4">
                     {messageSearch.trim().length > 1 && (
                       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] px-4 py-3 text-xs text-cyan-100">
@@ -2384,10 +2384,10 @@ export default function ChatPage() {
                               {isSpeaker && <Badge className="border-0 bg-emerald-500/15 text-[10px] text-emerald-300">Speaker</Badge>}
                               <span>{new Date(entry.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             </div>
-                            <div className={`rounded-3xl border px-4 py-3 text-sm leading-relaxed ${
+                            <div className={`rounded-3xl border px-4 py-3 text-sm leading-relaxed shadow-md ${
                               isMe
-                                ? "border-[#1d9bf0]/30 bg-[#1d9bf0] text-white"
-                                : "border-white/10 bg-[#16181c] text-slate-100"
+                                ? "border-cyan-400/30 bg-cyan-500 text-slate-950 shadow-cyan-500/10"
+                                : "border-white/10 bg-[#111827] text-slate-100 shadow-black/20"
                             }`}>
                               <div className="whitespace-pre-wrap break-words">{entry.message.content}</div>
                               {renderStructured(entry)}
@@ -2399,18 +2399,18 @@ export default function ChatPage() {
                     <div ref={bottomRef} />
                   </div>
                 </ScrollArea>
-                <div className="border-t border-white/10 bg-black px-3 py-4 sm:px-4">
+                <div className="border-t border-white/10 bg-[#0b0f17] px-3 py-4 sm:px-4">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Input
                       value={messageSearch}
                       onChange={(e) => setMessageSearch(e.target.value)}
                       placeholder={directRecipientId ? "Search this private thread..." : "Search this room history..."}
-                      className="h-10 max-w-sm rounded-full border-white/10 bg-[#16181c] text-white placeholder:text-slate-600"
+                      className="h-10 max-w-sm rounded-full border-white/10 bg-white/[0.04] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                     />
                     {messageSearch.trim().length > 0 && (
                       <Button
                         variant="ghost"
-                        className="rounded-full border border-white/10 text-slate-200 hover:bg-[#16181c]"
+                        className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]"
                         onClick={() => setMessageSearch("")}
                       >
                         Clear search
@@ -2420,7 +2420,7 @@ export default function ChatPage() {
                   {typingLabel && (
                     <div className="mb-3 text-xs text-cyan-300">{typingLabel}</div>
                   )}
-                  <div className="rounded-3xl border border-white/10 bg-[#16181c] p-3">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-inner shadow-black/20">
                     <Textarea
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
@@ -2431,7 +2431,7 @@ export default function ChatPage() {
                   <div className="mt-3 grid gap-3 sm:flex sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {["++1", "ship it", "need review"].map((emoji) => (
-                        <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-300 hover:bg-[#16181c]" onClick={() => setReaction(emoji)}>
+                        <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]" onClick={() => setReaction(emoji)}>
                           {emoji}
                         </Button>
                       ))}
@@ -2447,7 +2447,7 @@ export default function ChatPage() {
 
             <div className="space-y-4 border-t border-white/10 p-3 sm:p-4 2xl:border-l 2xl:border-t-0">
               {!directRecipientId && activeRoom !== "global" && (
-                <Card className="rounded-3xl border-white/10 bg-[#16181c] p-4 shadow-none">
+                <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Room administration</div>
@@ -2459,7 +2459,7 @@ export default function ChatPage() {
                     <Settings2 className="h-4 w-4 text-cyan-400" />
                   </div>
                   <div className="mt-3 grid gap-3">
-                    <div className="rounded-3xl border border-white/10 bg-black p-3">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline" className="border-white/10 text-slate-300">
                           {activeRoomSettings?.settings?.isPrivate ? "Private" : "Open to members"}
@@ -2480,7 +2480,7 @@ export default function ChatPage() {
                         value={inviteUserId}
                         onChange={(e) => setInviteUserId(e.target.value)}
                         placeholder="User ID to invite"
-                        className="h-11 rounded-full border-white/10 bg-black text-white placeholder:text-slate-600"
+                        className="h-11 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                       />
                       <Button
                         onClick={() => void handleInviteToRoom()}
@@ -2493,7 +2493,7 @@ export default function ChatPage() {
                     </div>
                     <Button
                       variant="ghost"
-                      className="justify-start rounded-full border border-white/10 bg-black text-slate-200 hover:bg-white/10"
+                      className="justify-start rounded-full border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/10"
                       onClick={() => void handleTogglePermanentRoom()}
                       disabled={!canManageActiveRoom || !activeRoomSettings || updateRoomSettings.isPending}
                     >
@@ -2503,7 +2503,7 @@ export default function ChatPage() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       <Button
                         variant="ghost"
-                        className="justify-start rounded-full border border-white/10 bg-black text-slate-200 hover:bg-white/10"
+                        className="justify-start rounded-full border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/10"
                         onClick={() => void handleToggleRoomFlag("isPrivate")}
                         disabled={!canManageActiveRoom || !activeRoomSettings || updateRoomSettings.isPending}
                       >
@@ -2512,7 +2512,7 @@ export default function ChatPage() {
                       </Button>
                       <Button
                         variant="ghost"
-                        className="justify-start rounded-full border border-white/10 bg-black text-slate-200 hover:bg-white/10"
+                        className="justify-start rounded-full border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/10"
                         onClick={() => void handleToggleRoomFlag("allowGuests")}
                         disabled={!canManageActiveRoom || !activeRoomSettings || updateRoomSettings.isPending}
                       >
@@ -2525,12 +2525,12 @@ export default function ChatPage() {
               )}
 
               {directRecipientId && (
-                <Card className="rounded-3xl border-white/10 bg-[#16181c] p-4 shadow-none">
+                <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold text-white">Private chat tools</div>
                     <Users className="h-4 w-4 text-violet-300" />
                   </div>
-                  <div className="mt-3 rounded-3xl border border-white/10 bg-black p-3 text-sm text-slate-400">
+                  <div className="mt-3 rounded-3xl border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-400">
                     {canCallCurrentDirectUser
                       ? `This thread is only between you and ${roomName}. You can make voice and video calls because you are friends.`
                       : "Accept the friend request first to unlock private messages, voice calls, and video calls."}
@@ -2565,7 +2565,7 @@ export default function ChatPage() {
                     )}
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-white/5 bg-black/20 p-3">
+                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#080b12] p-3">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-medium text-white">Direct call state</div>
@@ -2659,7 +2659,7 @@ export default function ChatPage() {
                   </div>
                 </Card>
               )}
-              <Card className="rounded-3xl border-cyan-500/20 bg-[#07111d] p-4 shadow-none">
+              <Card className="rounded-3xl border-cyan-500/20 bg-[#07111d] p-4 shadow-xl shadow-cyan-950/20">
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-sm font-semibold text-white">Code-aware call layer</div>
@@ -2673,7 +2673,7 @@ export default function ChatPage() {
                     value={callCodeAnchor}
                     onChange={(e) => setCallCodeAnchor(e.target.value)}
                     placeholder="src/pages/EditorPage.tsx:120"
-                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                    className="h-11 rounded-full border-white/10 bg-[#080b12] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button onClick={handlePinCallToCode} variant="ghost" className="justify-start rounded-full border border-cyan-500/20 text-cyan-100 hover:bg-cyan-500/10">
@@ -2690,7 +2690,7 @@ export default function ChatPage() {
                     value={terminalShareCommand}
                     onChange={(e) => setTerminalShareCommand(e.target.value)}
                     placeholder="npm run build"
-                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                    className="h-11 rounded-full border-white/10 bg-[#080b12] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                   />
                   <Button onClick={handleShareTerminalPip} variant="ghost" className="justify-start rounded-full border border-emerald-500/20 text-emerald-100 hover:bg-emerald-500/10">
                     <PictureInPicture2 className="mr-2 h-4 w-4" />
@@ -2702,7 +2702,7 @@ export default function ChatPage() {
                       value={captionLanguage}
                       onChange={(e) => setCaptionLanguage(e.target.value)}
                       placeholder="Caption language"
-                      className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                      className="h-11 rounded-full border-white/10 bg-[#080b12] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                     />
                     <Button onClick={handleEnableTranslatedCaptions} variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10">
                       Live captions
@@ -2713,7 +2713,7 @@ export default function ChatPage() {
                     value={actionItemText}
                     onChange={(e) => setActionItemText(e.target.value)}
                     placeholder="AI action item detected from the call..."
-                    className="min-h-20 border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                    className="min-h-20 border-white/10 bg-[#080b12] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button onClick={handleCreateAiMeetingSummary} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
@@ -2730,7 +2730,7 @@ export default function ChatPage() {
                     value={drawingTarget}
                     onChange={(e) => setDrawingTarget(e.target.value)}
                     placeholder="active editor selection"
-                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                    className="h-11 rounded-full border-white/10 bg-[#080b12] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
                   />
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button onClick={handleStartDrawingOverlay} variant="ghost" className="justify-start rounded-full border border-amber-500/20 text-amber-100 hover:bg-amber-500/10">
@@ -2748,7 +2748,7 @@ export default function ChatPage() {
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold text-white">Code + file sharing</div>
                   <FileCode2 className="h-4 w-4 text-cyan-400" />
@@ -2757,13 +2757,13 @@ export default function ChatPage() {
                   value={snippetLanguage}
                   onChange={(e) => setSnippetLanguage(e.target.value)}
                   placeholder="Language"
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Textarea
                   value={snippetCode}
                   onChange={(e) => setSnippetCode(e.target.value)}
                   placeholder="Paste a snippet to share live in the room..."
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Button onClick={handleShareSnippet} disabled={!snippetCode.trim()} className="mt-3 w-full bg-cyan-500 text-slate-950">
                   <Code2 className="mr-2 h-4 w-4" />
@@ -2771,13 +2771,13 @@ export default function ChatPage() {
                 </Button>
               </Card>
 
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="text-sm font-semibold text-white">Jump into call from code line</div>
                 <Input
                   value={lineRef}
                   onChange={(e) => setLineRef(e.target.value)}
                   placeholder="dashboard.php:128"
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Button onClick={handleJumpToLine} className="mt-3 w-full border border-white/10 text-slate-200" variant="ghost">
                   <MonitorUp className="mr-2 h-4 w-4" />
@@ -2786,13 +2786,13 @@ export default function ChatPage() {
               </Card>
 
               {!directRecipientId && (
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="text-sm font-semibold text-white">Schedule with calendar sync</div>
                 <Input
                   value={scheduleAt}
                   onChange={(e) => setScheduleAt(e.target.value)}
                   placeholder="2026-04-29 10:30 CET"
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Button onClick={handleScheduleMeeting} disabled={!scheduleAt.trim()} className="mt-3 w-full border border-white/10 text-slate-200" variant="ghost">
                   <CalendarDays className="mr-2 h-4 w-4" />
@@ -2801,13 +2801,13 @@ export default function ChatPage() {
               </Card>
               )}
 
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="text-sm font-semibold text-white">Technical drawing + annotation</div>
                 <Textarea
                   value={annotation}
                   onChange={(e) => setAnnotation(e.target.value)}
                   placeholder="Describe the marked code path, sketch note, or architecture callout..."
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Button onClick={handleAnnotation} disabled={!annotation.trim()} className="mt-3 w-full border border-white/10 text-slate-200" variant="ghost">
                   <WandSparkles className="mr-2 h-4 w-4" />
@@ -2816,19 +2816,19 @@ export default function ChatPage() {
               </Card>
 
               {!directRecipientId && (
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="text-sm font-semibold text-white">Live polling + reactions</div>
                 <Input
                   value={pollQuestion}
                   onChange={(e) => setPollQuestion(e.target.value)}
                   placeholder="Poll question"
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <Textarea
                   value={pollOptions}
                   onChange={(e) => setPollOptions(e.target.value)}
                   placeholder={"One option per line"}
-                  className="mt-3 border-white/10 bg-black/20 text-white"
+                  className="mt-3 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                 />
                 <div className="mt-3 flex gap-2">
                   <Button onClick={handlePublishPoll} className="flex-1 bg-cyan-500 text-slate-950">
@@ -2838,7 +2838,7 @@ export default function ChatPage() {
                   <Input
                     value={reaction}
                     onChange={(e) => setReaction(e.target.value)}
-                    className="w-28 border-white/10 bg-black/20 text-white"
+                    className="w-28 border-white/10 bg-white/[0.04] text-white focus-visible:ring-cyan-500/40"
                   />
                 </div>
                 {activePoll && (
@@ -2851,7 +2851,7 @@ export default function ChatPage() {
               )}
 
               {!directRecipientId && (
-              <Card className="border-white/5 bg-[#0b0f17] p-4">
+              <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold text-white">Security + transport</div>
                   <Lock className="h-4 w-4 text-cyan-400" />
