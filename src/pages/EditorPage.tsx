@@ -19,7 +19,8 @@ import {
   Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
   ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
   Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown, Bug, Archive, Box, Camera,
-  Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw
+  Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw,
+  Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert
 } from "lucide-react";
 
 const languages = [
@@ -1128,6 +1129,32 @@ export default function EditorPage() {
                   <Sparkles className="mr-2 h-4 w-4" /> Suggest next code
                 </Button>
               </div>
+              <div className="mt-4 rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-cyan-100">
+                  <Workflow className="h-4 w-4" /> Autonomous debugging agent
+                </div>
+                <p className="mt-2 text-xs leading-5 text-cyan-50/75">
+                  A Cascade-style agent can inspect project files, explain failures, propose patches, and run approved terminal commands through the device agent.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {["Scan repo", "Plan fix", "Run tests"].map((action) => (
+                    <Button key={action} size="sm" variant="ghost" disabled={!project?.aiAgentEnabled} className="border border-cyan-200/20 text-cyan-50 hover:bg-cyan-200/10" onClick={() => toast.info(`${action} will require the repo-level AI agent executor and approval policy.`)}>
+                      {action}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 rounded-lg border border-violet-400/20 bg-violet-400/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-violet-100">
+                  <Sparkles className="h-4 w-4" /> Vibe coding builder
+                </div>
+                <p className="mt-2 text-xs leading-5 text-violet-50/75">
+                  Chat in natural language to generate full components, database models, routes, and deployment steps as one coordinated workspace change.
+                </p>
+                <Button size="sm" disabled={!project?.aiAgentEnabled} className="mt-3 bg-violet-500 text-white hover:bg-violet-400" onClick={() => toast.info("Vibe coding needs multi-file write tools, review diffs, and rollback before auto-applying changes.")}>
+                  <Wand2 className="mr-2 h-4 w-4" /> Build from prompt
+                </Button>
+              </div>
             </div>
             <div className="rounded-xl border border-white/5 bg-[#0d0d12] p-4">
               <h3 className="text-sm font-semibold text-white">Collaboration flow</h3>
@@ -1154,6 +1181,21 @@ export default function EditorPage() {
                   {["GitHub", "GitLab", "Bitbucket"].map((provider) => (
                     <Button key={provider} size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${provider} connection needs OAuth setup before pushing.`)}>
                       {provider}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Video className="h-4 w-4 text-cyan-300" /> Built-in communication suite
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Add production-grade voice, video, screen sharing, and session moderation directly inside the collaboration room.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {["Voice rooms", "Video rooms", "Screen share"].map((item) => (
+                    <Button key={item} size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${item} needs WebRTC/SFU infrastructure before production use.`)}>
+                      {item}
                     </Button>
                   ))}
                 </div>
@@ -1270,6 +1312,43 @@ export default function EditorPage() {
 
               <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Cloud className="h-4 w-4 text-sky-300" /> Multi-cloud and hybrid deployment
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Deploy consistently to cloud providers or private servers from the same live workspace.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  {[
+                    ["AWS", Cloud],
+                    ["Azure", Server],
+                    ["Google Cloud", Database],
+                    ["On-prem", HardDrive],
+                  ].map(([provider, Icon]) => (
+                    <Button key={String(provider)} variant="ghost" className="justify-start border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${provider} deployment needs provider credentials, build recipes, and policy checks.`)}>
+                      <Icon className="mr-2 h-4 w-4 text-sky-300" /> {provider}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <WifiOff className="h-4 w-4 text-emerald-300" /> Offline mode with local computation
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Keep working after a project loads by caching files locally and running computation through the desktop agent when the network drops.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {["Cache project", "Local terminal", "Sync when online"].map((item) => (
+                    <div key={item} className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs font-medium text-slate-200">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
                   <GitMerge className="h-4 w-4 text-amber-300" /> Conflict resolution engine
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -1285,6 +1364,43 @@ export default function EditorPage() {
                   <Button variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Merge suggestions need edit-range analytics from the collaboration provider.")}>
                     <GitMerge className="mr-2 h-4 w-4" /> Analyze edits
                   </Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <LockKeyhole className="h-4 w-4 text-red-300" /> Zero-trust session security
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Every file read, terminal run, AI action, and deployment step should be authenticated, authorized, and logged.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {[
+                    ["Identity", "Verify every user and paired device"],
+                    ["Authorization", "Check role, file, terminal, and deploy permissions"],
+                    ["Audit", "Record sensitive actions for owners"],
+                  ].map(([title, text]) => (
+                    <div key={title} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <div className="text-xs font-semibold text-white">{title}</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <ShieldAlert className="h-4 w-4 text-amber-300" /> Policy as code
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Run security, compliance, and cost checks before code, infrastructure, or containers go live.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {["Security scan", "Cost guardrails", "Deploy approval"].map((policy) => (
+                    <Button key={policy} size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info(`${policy} needs a policy engine and deployment pipeline integration.`)}>
+                      {policy}
+                    </Button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1303,6 +1419,30 @@ export default function EditorPage() {
                 </div>
                 <Button className="mt-3 bg-yellow-400 text-slate-950 hover:bg-yellow-300" onClick={() => toast.info(`Challenge mode is staged for ${challengeMinutes || 30} minutes. Backend scoring comes next.`)}>
                   <Timer className="mr-2 h-4 w-4" /> Start challenge
+                </Button>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <GraduationCap className="h-4 w-4 text-cyan-300" /> Collaborative bootcamp mode
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Host instructor-led rooms for large groups with follow mode, read-only learners, challenges, Q&A, and session playback.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Capacity", "50+ guests"],
+                    ["Mode", "Instructor led"],
+                    ["Learners", "View/comment first"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{label}</div>
+                      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+                    </div>
+                  ))}
+                </div>
+                <Button size="sm" variant="ghost" className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Bootcamp mode needs room scaling, instructor permissions, and attendance tracking.")}>
+                  <GraduationCap className="mr-2 h-4 w-4" /> Prepare bootcamp
                 </Button>
               </div>
 
