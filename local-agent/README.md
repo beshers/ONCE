@@ -17,6 +17,14 @@ The agent prints:
 - workspace folder
 
 Open OCNE, go to `Local Agent`, paste the token, connect, then run commands. Every command must be approved in the agent terminal before it runs.
+By default, approval happens in the website by typing `APPROVE` before sending the command.
+
+For the older terminal-window approval prompt, start the agent with:
+
+```powershell
+$env:OCNE_AGENT_APPROVAL="terminal"
+npm run agent
+```
 
 ## Choose A Workspace
 

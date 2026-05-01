@@ -9,7 +9,8 @@ const readline = require("node:readline");
 const PORT = Number(process.env.OCNE_AGENT_PORT || 48731);
 const TOKEN = process.env.OCNE_AGENT_TOKEN || crypto.randomBytes(18).toString("hex");
 const WORKSPACE = path.resolve(process.env.OCNE_AGENT_WORKSPACE || process.cwd());
-const VERSION = "0.1.0";
+const APPROVAL_MODE = process.env.OCNE_AGENT_APPROVAL || "web";
+const VERSION = "0.2.0";
 
 if (!fs.existsSync(WORKSPACE) || !fs.statSync(WORKSPACE).isDirectory()) {
   console.error(`[OCNE Agent] Workspace does not exist: ${WORKSPACE}`);
@@ -76,6 +77,10 @@ function askApproval(command) {
   });
 }
 
+function hasWebApproval(body) {
+  return String(body.approval || "").trim().toUpperCase() === "APPROVE";
+}
+
 function runCommand(command) {
   const isWindows = process.platform === "win32";
   const shell = isWindows
@@ -122,6 +127,7 @@ const server = http.createServer(async (req, res) => {
         arch: os.arch(),
         hostname: os.hostname(),
         workspace: WORKSPACE,
+        approvalMode: APPROVAL_MODE,
         tokenRequired: true,
       });
       return;
@@ -141,9 +147,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
-      const approved = await askApproval(command);
+      const approved = APPROVAL_MODE === "terminal" ? await askApproval(command) : hasWebApproval(body);
       if (!approved) {
-        sendJson(res, 403, { ok: false, error: "Command denied on the local computer" });
+        sendJson(res, 403, {
+          ok: false,
+          error: APPROVAL_MODE === "terminal"
+            ? "Command denied on the local computer"
+            : "Type APPROVE in the website before sending this command",
+        });
         return;
       }
 
@@ -164,7 +175,10 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`URL:   http://127.0.0.1:${PORT}`);
   console.log(`Token: ${TOKEN}`);
   console.log(`Workspace: ${WORKSPACE}`);
+  console.log(`Approval: ${APPROVAL_MODE === "terminal" ? "terminal prompt" : "website APPROVE field"}`);
   console.log("Keep this window open while using OCNE Agent.");
-  console.log("Commands require approval here before they run.");
+  console.log(APPROVAL_MODE === "terminal"
+    ? "Commands require approval here before they run."
+    : "Commands require APPROVE in the website before they run.");
   console.log("==============================================");
 });
