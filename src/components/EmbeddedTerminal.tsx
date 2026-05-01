@@ -25,6 +25,30 @@ const SHELL_ICON: Record<ShellType, string> = {
 const POLL_INTERVAL_MS = 500;
 const SHELLS: ShellType[] = ["powershell", "cmd", "bash", "sh"];
 
+function getPythonCommands(shell: ShellType) {
+  if (shell === "powershell") {
+    return [
+      { label: "Check Python", command: "python --version; py --version" },
+      { label: "Run Python Test", command: "python -c \"print('OCNE Python test works')\"" },
+      { label: "Try Install Python", command: "winget install -e --id Python.Python.3.12" },
+    ];
+  }
+
+  if (shell === "cmd") {
+    return [
+      { label: "Check Python", command: "python --version && py --version" },
+      { label: "Run Python Test", command: "python -c \"print('OCNE Python test works')\"" },
+      { label: "Try Install Python", command: "winget install -e --id Python.Python.3.12" },
+    ];
+  }
+
+  return [
+    { label: "Check Python", command: "python3 --version || python --version" },
+    { label: "Run Python Test", command: "python3 -c \"print('OCNE Python test works')\" || python -c \"print('OCNE Python test works')\"" },
+    { label: "Try Install Python", command: "sudo apt-get update && sudo apt-get install -y python3 python3-pip" },
+  ];
+}
+
 export default function EmbeddedTerminal({
   compact = false,
   title = "Terminal",
@@ -191,7 +215,13 @@ export default function EmbeddedTerminal({
     setDisplayOutput("");
   };
 
+  const queueCommand = (command: string) => {
+    setInputValue(command);
+    inputRef.current?.focus();
+  };
+
   const shellReady = !checkingShells && shellAvailability !== undefined;
+  const pythonCommands = session ? getPythonCommands(session.shell) : [];
 
   return (
     <div style={{ ...S.page, height: compact ? "360px" : "calc(100vh - 120px)" }}>
@@ -266,45 +296,55 @@ export default function EmbeddedTerminal({
         </div>
 
         {session && sessionAlive && (
-          <div style={S.inputRow}>
-            <span style={S.promptGlyph}>{session.shell === "powershell" ? "PS >" : session.shell === "cmd" ? "CMD >" : "$"}</span>
-            <input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSendInput();
-                if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
-                  if (nextIndex >= 0) {
-                    setHistoryIndex(nextIndex);
-                    setInputValue(history[nextIndex] || "");
+          <>
+            <div style={S.quickActions}>
+              <span style={S.quickActionsLabel}>Python</span>
+              {pythonCommands.map((item) => (
+                <button key={item.label} onClick={() => queueCommand(item.command)} style={S.quickBtn}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div style={S.inputRow}>
+              <span style={S.promptGlyph}>{session.shell === "powershell" ? "PS >" : session.shell === "cmd" ? "CMD >" : "$"}</span>
+              <input
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSendInput();
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const nextIndex = historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+                    if (nextIndex >= 0) {
+                      setHistoryIndex(nextIndex);
+                      setInputValue(history[nextIndex] || "");
+                    }
                   }
-                }
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  if (historyIndex === null) return;
-                  const nextIndex = historyIndex + 1;
-                  if (nextIndex >= history.length) {
-                    setHistoryIndex(null);
-                    setInputValue("");
-                  } else {
-                    setHistoryIndex(nextIndex);
-                    setInputValue(history[nextIndex] || "");
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    if (historyIndex === null) return;
+                    const nextIndex = historyIndex + 1;
+                    if (nextIndex >= history.length) {
+                      setHistoryIndex(null);
+                      setInputValue("");
+                    } else {
+                      setHistoryIndex(nextIndex);
+                      setInputValue(history[nextIndex] || "");
+                    }
                   }
-                }
-                if (e.key === "c" && e.ctrlKey && session) {
-                  sendInputMutation.mutate({ sessionId: session.id, input: "\x03", allowComputerAccess: true });
-                }
-              }}
-              style={S.cmdInput}
-              placeholder="Type a command and press Enter..."
-              spellCheck={false}
-            />
-            <button onClick={clearOutput} style={S.sendBtn}>Clear</button>
-            <button onClick={handleSendInput} style={S.sendBtn}>Run</button>
-          </div>
+                  if (e.key === "c" && e.ctrlKey && session) {
+                    sendInputMutation.mutate({ sessionId: session.id, input: "\x03", allowComputerAccess: true });
+                  }
+                }}
+                style={S.cmdInput}
+                placeholder="Type a command and press Enter..."
+                spellCheck={false}
+              />
+              <button onClick={clearOutput} style={S.sendBtn}>Clear</button>
+              <button onClick={handleSendInput} style={S.sendBtn}>Run</button>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -364,6 +404,9 @@ const S: Record<string, React.CSSProperties> = {
   emptyIcon: { fontSize: "32px", opacity: 0.3 },
   spinner: { fontSize: "24px" },
   inputRow: { display: "flex", alignItems: "center", gap: "8px", borderTop: "1px solid #21262d", padding: "8px 16px", background: "#0d1117", flexShrink: 0 },
+  quickActions: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", borderTop: "1px solid #21262d", padding: "8px 16px", background: "#070b12", flexShrink: 0 },
+  quickActionsLabel: { color: "#8b949e", fontSize: "11px", fontFamily: "Inter, system-ui, sans-serif", textTransform: "uppercase" },
+  quickBtn: { padding: "4px 10px", borderRadius: "999px", border: "1px solid #1d9bf0", background: "rgba(29,155,240,0.08)", color: "#93c5fd", cursor: "pointer", fontSize: "12px", fontFamily: "Inter, system-ui, sans-serif", flexShrink: 0 },
   promptGlyph: { color: "#3fb950", fontWeight: 700, fontSize: "13px", userSelect: "none", flexShrink: 0 },
   cmdInput: { flex: 1, background: "transparent", border: "none", outline: "none", color: "#e6edf3", fontFamily: 'Consolas, "Cascadia Code", "Courier New", monospace', fontSize: "13px", caretColor: "#58a6ff", lineHeight: "1.5" },
   sendBtn: { padding: "4px 12px", borderRadius: "5px", border: "1px solid #30363d", background: "#21262d", color: "#c9d1d9", cursor: "pointer", fontSize: "12px", fontFamily: "inherit", flexShrink: 0 },
