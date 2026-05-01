@@ -382,46 +382,74 @@ export default function EditorPage() {
   if (!projectId) {
     // Show project selector when no project ID
     const { data: allProjects } = trpc.project.list.useQuery();
+    const ownedProjects = allProjects?.owned || [];
     return (
-      <div className="space-y-6 max-w-7xl mx-auto">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Code Editor</h1>
-          <p className="text-slate-400 text-sm">Select a project to start editing</p>
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="rounded-2xl border border-white/10 bg-[#0d1220] p-6 shadow-2xl shadow-black/20">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <Badge className="mb-3 bg-cyan-500/10 text-cyan-200">Online Code Network Editor</Badge>
+              <h1 className="text-3xl font-semibold tracking-tight text-white">Choose a project to code</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                Open a workspace with files, folders, live collaboration, AI help, and a device terminal when local access is enabled.
+              </p>
+            </div>
+            <Button onClick={() => navigate("/projects")} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+              <Plus className="mr-2 h-4 w-4" /> Create project
+            </Button>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {(allProjects?.owned || []).map((p) => (
+        {ownedProjects.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-10 text-center">
+            <FileCode className="mx-auto mb-4 h-10 w-10 text-slate-600" />
+            <h2 className="text-lg font-semibold text-white">No projects yet</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              Create your first project, choose a language, then start writing code in the online editor.
+            </p>
+            <Button onClick={() => navigate("/projects")} className="mt-5 bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+              <Plus className="mr-2 h-4 w-4" /> New project
+            </Button>
+          </div>
+        ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {ownedProjects.map((p) => (
             <Card
               key={p.id}
-              className="bg-[#13131f] border-white/5 hover:border-cyan-500/20 cursor-pointer p-5"
+              className="group cursor-pointer border-white/10 bg-[#111827] p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-400/30 hover:bg-[#151d2e]"
               onClick={() => navigate(`/projects/${p.id}`)}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-lg">
-                  {p.language?.charAt(0)?.toUpperCase() || "📄"}
+              <div className="flex items-start gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-sm font-semibold text-cyan-100">
+                  {(p.language || "code").slice(0, 2).toUpperCase()}
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-white">{p.name}</h3>
-                  <p className="text-xs text-slate-500">{p.language}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-semibold text-white group-hover:text-cyan-200">{p.name}</h3>
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{p.description || "Ready for files, folders, and live coding."}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="border-white/10 text-[10px] text-slate-400">{p.language || "plaintext"}</Badge>
+                    <Badge className="bg-emerald-500/10 text-[10px] text-emerald-300">{p.collaborationMode || "solo"}</Badge>
+                  </div>
                 </div>
               </div>
             </Card>
           ))}
         </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="h-[calc(100vh-120px)] flex flex-col max-w-7xl mx-auto">
+    <div className="mx-auto flex h-[calc(100vh-120px)] max-w-[1500px] flex-col rounded-2xl border border-white/10 bg-[#070a12] p-3 shadow-2xl shadow-black/25">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/projects")} className="text-slate-400">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0d1220] px-3 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/projects")} className="shrink-0 text-slate-400 hover:bg-white/10 hover:text-white">
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <div>
-            <h1 className="text-lg font-bold text-white">{project?.name || "Editor"}</h1>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold text-white sm:text-lg">{project?.name || "Editor"}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <Badge variant="outline" className="border-white/10 text-slate-400 text-[10px] h-5">
                 {activeFile?.language || project?.language || "plaintext"}
               </Badge>
@@ -434,7 +462,7 @@ export default function EditorPage() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {liveUsers.length > 0 && (
             <div className="hidden items-center gap-1 md:flex">
               {liveUsers.slice(0, 5).map((user) => (
@@ -474,8 +502,9 @@ export default function EditorPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="bg-[#13131f] border border-white/5 w-fit mb-2">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+        <div className="mb-2 overflow-x-auto pb-1">
+        <TabsList className="w-max border border-white/10 bg-[#101827]">
           <TabsTrigger value="editor" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <FileCode className="w-3.5 h-3.5 mr-1.5" /> Editor
           </TabsTrigger>
@@ -498,13 +527,14 @@ export default function EditorPage() {
             <Settings className="w-3.5 h-3.5 mr-1.5" /> Settings
           </TabsTrigger>
         </TabsList>
+        </div>
 
-        <TabsContent value="editor" className="flex-1 mt-0 space-y-4">
-          <div className="flex gap-0">
+        <TabsContent value="editor" className="mt-0 min-h-0 flex-1 space-y-4 overflow-auto">
+          <div className="grid min-h-[560px] gap-0 overflow-hidden rounded-xl border border-white/10 bg-[#0b0f19] lg:grid-cols-[260px_1fr]">
           {/* File Explorer */}
-          <div className="w-56 bg-[#13131f] border border-white/5 rounded-l-xl overflow-hidden flex flex-col">
-            <div className="h-10 flex items-center justify-between px-3 border-b border-white/5">
-              <span className="text-[10px] uppercase font-semibold text-slate-600 tracking-wider">Explorer</span>
+          <div className="flex min-h-[260px] flex-col border-b border-white/10 bg-[#101827] lg:border-b-0 lg:border-r">
+            <div className="flex min-h-11 items-center justify-between gap-1 border-b border-white/10 px-3">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Explorer</span>
               <Dialog open={createFileOpen} onOpenChange={setCreateFileOpen}>
                 <DialogTrigger asChild>
                   <Button
@@ -581,19 +611,20 @@ export default function EditorPage() {
                 <FolderPlus className="w-3.5 h-3.5" />
               </Button>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
               {files && files.length > 0 ? renderFileTree() : (
-                <div className="rounded-lg border border-dashed border-white/10 p-3 text-center text-xs text-slate-600">
-                  Create files and folders for this project.
+                <div className="rounded-lg border border-dashed border-white/10 bg-black/20 p-4 text-center text-xs leading-5 text-slate-500">
+                  <FolderPlus className="mx-auto mb-2 h-5 w-5 text-slate-600" />
+                  Create your first file or folder.
                 </div>
               )}
             </div>
           </div>
 
           {/* Editor */}
-          <div className="flex-1 bg-[#0d0d12] border border-white/5 rounded-r-xl overflow-hidden flex flex-col">
-            <div className="h-9 flex items-center px-3 border-b border-white/5 bg-[#13131f]">
-              <span className="text-xs text-slate-500">
+          <div className="flex min-w-0 flex-col overflow-hidden bg-[#080b12]">
+            <div className="flex min-h-10 items-center gap-3 border-b border-white/10 bg-[#101827] px-3">
+              <span className="min-w-0 truncate text-xs text-slate-400">
                 {activeFile?.name || "Select a file"}
               </span>
               <div className="ml-auto flex items-center gap-2">
@@ -614,7 +645,7 @@ export default function EditorPage() {
                 )}
               </div>
             </div>
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
               {/* Code area */}
               {activeFile ? (
                 <div className="min-w-0 flex-1">
@@ -628,12 +659,16 @@ export default function EditorPage() {
                 />
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center text-slate-600">
-                  <p className="text-sm">Select a file from the explorer to start editing</p>
+                <div className="flex flex-1 items-center justify-center p-8 text-center text-slate-600">
+                  <div>
+                    <FileCode className="mx-auto mb-3 h-10 w-10 text-slate-700" />
+                    <p className="text-sm text-slate-400">Select a file from the explorer to start editing</p>
+                    <p className="mt-2 text-xs text-slate-600">Use the plus buttons to create files and folders for this project.</p>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="h-7 flex items-center px-3 border-t border-white/5 bg-[#13131f] text-[10px] text-slate-600 gap-4">
+            <div className="flex min-h-7 items-center gap-4 border-t border-white/10 bg-[#101827] px-3 text-[10px] text-slate-500">
               <span>{activeFile?.language || "plaintext"}</span>
               <span>{lines.length} lines</span>
               <span>{code.length} chars</span>
