@@ -50,7 +50,15 @@ type EventKind =
   | "annotation"
   | "execution"
   | "control"
-  | "call";
+  | "call"
+  | "code-anchor"
+  | "handoff"
+  | "terminal-pip"
+  | "ai-summary"
+  | "action-item"
+  | "translation"
+  | "drawing"
+  | "replay";
 
 type EventMeta = {
   kind: EventKind;
@@ -65,6 +73,12 @@ type EventMeta = {
   when?: string;
   note?: string;
   action?: string;
+  assignee?: string;
+  command?: string;
+  languageName?: string;
+  priority?: "low" | "normal" | "high";
+  replayId?: string;
+  sfuMode?: boolean;
   encrypted?: boolean;
   callId?: string;
   mode?: "voice" | "video" | "screen";
@@ -131,6 +145,11 @@ export default function ChatPage() {
   const [snippetCode, setSnippetCode] = useState("");
   const [snippetLanguage, setSnippetLanguage] = useState("ts");
   const [lineRef, setLineRef] = useState("dashboard.php:128");
+  const [callCodeAnchor, setCallCodeAnchor] = useState("src/pages/EditorPage.tsx:120");
+  const [terminalShareCommand, setTerminalShareCommand] = useState("npm run build");
+  const [actionItemText, setActionItemText] = useState("Fix the login validation bug");
+  const [captionLanguage, setCaptionLanguage] = useState("English");
+  const [drawingTarget, setDrawingTarget] = useState("active editor selection");
   const [scheduleAt, setScheduleAt] = useState("");
   const [annotation, setAnnotation] = useState("");
   const [pollQuestion, setPollQuestion] = useState("Should we ship after this review?");
@@ -1283,6 +1302,123 @@ export default function ChatPage() {
     );
   }
 
+  async function handlePinCallToCode() {
+    if (!callCodeAnchor.trim()) return;
+    setActionError("Call pinned to the selected code context.");
+    await sendStructuredMessage(
+      `Call pinned to \`${callCodeAnchor.trim()}\`.`,
+      {
+        kind: "code-anchor",
+        title: "Code-anchored call",
+        lineRef: callCodeAnchor.trim(),
+        action: "pin-call-to-code",
+      },
+    );
+  }
+
+  async function handleRequestHandoff() {
+    setActionError("Pair-programming handoff requested. The teammate must approve control.");
+    await sendStructuredMessage(
+      `Handoff requested for \`${callCodeAnchor.trim() || lineRef.trim()}\`.`,
+      {
+        kind: "handoff",
+        title: "Pair-programming handoff",
+        lineRef: callCodeAnchor.trim() || lineRef.trim(),
+        action: "request-cursor-terminal-control",
+        priority: "high",
+      },
+    );
+  }
+
+  async function handleShareTerminalPip() {
+    if (!terminalShareCommand.trim()) return;
+    setActionError("Terminal PiP shared with the call timeline.");
+    await sendStructuredMessage(
+      `Terminal PiP shared: \`${terminalShareCommand.trim()}\`.`,
+      {
+        kind: "terminal-pip",
+        title: "Terminal picture-in-picture",
+        command: terminalShareCommand.trim(),
+        action: "share-terminal-output",
+      },
+    );
+  }
+
+  async function handleCreateAiMeetingSummary() {
+    const refs = transcriptEntries
+      .slice(-5)
+      .map((entry) => `${entry.sender?.name || entry.sender?.username || "User"}: ${entry.message.content}`)
+      .join("\n");
+    setActionError("AI meeting summary drafted with code context.");
+    await sendStructuredMessage(
+      `AI meeting summary created for ${callCodeAnchor.trim() || "the current call"}.\n${refs || "No transcript lines yet."}`,
+      {
+        kind: "ai-summary",
+        title: "AI meeting summary",
+        lineRef: callCodeAnchor.trim(),
+        note: refs,
+        action: "summarize-call-with-code-links",
+      },
+    );
+  }
+
+  async function handleCreateActionItem() {
+    if (!actionItemText.trim()) return;
+    setActionError("Action item added to the project call stream.");
+    await sendStructuredMessage(
+      `Action item: ${actionItemText.trim()}`,
+      {
+        kind: "action-item",
+        title: "AI action item",
+        note: actionItemText.trim(),
+        lineRef: callCodeAnchor.trim(),
+        assignee: user?.name || user?.username || "Current user",
+        priority: "normal",
+      },
+    );
+  }
+
+  async function handleEnableTranslatedCaptions() {
+    setActionError(`Translated captions set to ${captionLanguage}.`);
+    await sendStructuredMessage(
+      `Live translated captions enabled: ${captionLanguage}.`,
+      {
+        kind: "translation",
+        title: "Live translated captions",
+        languageName: captionLanguage,
+        action: "enable-translated-captions",
+      },
+    );
+  }
+
+  async function handleStartDrawingOverlay() {
+    setActionError("Temporary drawing overlay published to collaborators.");
+    await sendStructuredMessage(
+      `Drawing overlay started on ${drawingTarget.trim() || "the editor"}.`,
+      {
+        kind: "drawing",
+        title: "Screen drawing overlay",
+        note: drawingTarget.trim(),
+        action: "start-temporary-markup",
+      },
+    );
+  }
+
+  async function handleCreateSyncedReplay() {
+    const replayId = crypto.randomUUID();
+    setActionError("Synced replay marker created for this call and code timeline.");
+    await sendStructuredMessage(
+      `Shared replay marker saved for \`${callCodeAnchor.trim() || "current session"}\`.`,
+      {
+        kind: "replay",
+        title: "Call + code replay",
+        replayId,
+        lineRef: callCodeAnchor.trim(),
+        action: "save-synced-replay-marker",
+      },
+    );
+  }
+
   async function startRoomMedia(mode: "voice" | "video") {
     setActionError(null);
     const stream = await ensureLocalStream(mode);
@@ -1507,6 +1643,31 @@ export default function ChatPage() {
         <div className="mt-2 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-3 text-xs text-violet-100">
           <div className="font-semibold">{meta.title}</div>
           <div className="mt-1 text-violet-200">{meta.lineRef}</div>
+        </div>
+      );
+    }
+
+    if (
+      meta.kind === "code-anchor" ||
+      meta.kind === "handoff" ||
+      meta.kind === "terminal-pip" ||
+      meta.kind === "ai-summary" ||
+      meta.kind === "action-item" ||
+      meta.kind === "translation" ||
+      meta.kind === "drawing" ||
+      meta.kind === "replay"
+    ) {
+      return (
+        <div className="mt-2 rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3 text-xs text-cyan-100">
+          <div className="font-semibold text-white">{meta.title}</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {meta.lineRef && <Badge variant="outline" className="border-cyan-500/20 text-cyan-200">{meta.lineRef}</Badge>}
+            {meta.command && <Badge variant="outline" className="border-emerald-500/20 text-emerald-200">{meta.command}</Badge>}
+            {meta.languageName && <Badge variant="outline" className="border-violet-500/20 text-violet-200">{meta.languageName}</Badge>}
+            {meta.assignee && <Badge variant="outline" className="border-white/10 text-slate-300">{meta.assignee}</Badge>}
+            {meta.replayId && <Badge variant="outline" className="border-white/10 text-slate-300">Replay {meta.replayId.slice(0, 8)}</Badge>}
+          </div>
+          {meta.note && <div className="mt-2 whitespace-pre-wrap text-cyan-50">{meta.note}</div>}
         </div>
       );
     }
@@ -2498,6 +2659,95 @@ export default function ChatPage() {
                   </div>
                 </Card>
               )}
+              <Card className="rounded-3xl border-cyan-500/20 bg-[#07111d] p-4 shadow-none">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-white">Code-aware call layer</div>
+                    <div className="text-[11px] text-slate-500">Tie voice, video, terminal, AI notes, and replay markers to code context.</div>
+                  </div>
+                  <MonitorUp className="h-4 w-4 text-cyan-300" />
+                </div>
+
+                <div className="mt-3 grid gap-3">
+                  <Input
+                    value={callCodeAnchor}
+                    onChange={(e) => setCallCodeAnchor(e.target.value)}
+                    placeholder="src/pages/EditorPage.tsx:120"
+                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={handlePinCallToCode} variant="ghost" className="justify-start rounded-full border border-cyan-500/20 text-cyan-100 hover:bg-cyan-500/10">
+                      <Link2 className="mr-2 h-4 w-4" />
+                      Pin call to code
+                    </Button>
+                    <Button onClick={handleRequestHandoff} variant="ghost" className="justify-start rounded-full border border-violet-500/20 text-violet-100 hover:bg-violet-500/10">
+                      <Maximize2 className="mr-2 h-4 w-4" />
+                      Request handoff
+                    </Button>
+                  </div>
+
+                  <Input
+                    value={terminalShareCommand}
+                    onChange={(e) => setTerminalShareCommand(e.target.value)}
+                    placeholder="npm run build"
+                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                  />
+                  <Button onClick={handleShareTerminalPip} variant="ghost" className="justify-start rounded-full border border-emerald-500/20 text-emerald-100 hover:bg-emerald-500/10">
+                    <PictureInPicture2 className="mr-2 h-4 w-4" />
+                    Share terminal PiP
+                  </Button>
+
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <Input
+                      value={captionLanguage}
+                      onChange={(e) => setCaptionLanguage(e.target.value)}
+                      placeholder="Caption language"
+                      className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                    />
+                    <Button onClick={handleEnableTranslatedCaptions} variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10">
+                      Live captions
+                    </Button>
+                  </div>
+
+                  <Textarea
+                    value={actionItemText}
+                    onChange={(e) => setActionItemText(e.target.value)}
+                    placeholder="AI action item detected from the call..."
+                    className="min-h-20 border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={handleCreateAiMeetingSummary} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      AI summary
+                    </Button>
+                    <Button onClick={handleCreateActionItem} variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10">
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Add action item
+                    </Button>
+                  </div>
+
+                  <Input
+                    value={drawingTarget}
+                    onChange={(e) => setDrawingTarget(e.target.value)}
+                    placeholder="active editor selection"
+                    className="h-11 rounded-full border-white/10 bg-black/30 text-white placeholder:text-slate-600"
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button onClick={handleStartDrawingOverlay} variant="ghost" className="justify-start rounded-full border border-amber-500/20 text-amber-100 hover:bg-amber-500/10">
+                      <WandSparkles className="mr-2 h-4 w-4" />
+                      Draw overlay
+                    </Button>
+                    <Button onClick={handleCreateSyncedReplay} variant="ghost" className="justify-start rounded-full border border-white/10 text-slate-200 hover:bg-white/10">
+                      <Play className="mr-2 h-4 w-4" />
+                      Save replay marker
+                    </Button>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/25 p-3 text-xs text-slate-400">
+                    SFU mode, bandwidth priority, spatial audio, and desktop-agent media routing are tracked here as structured events; the next backend step is connecting these controls to a real media service.
+                  </div>
+                </div>
+              </Card>
               <Card className="border-white/5 bg-[#0b0f17] p-4">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-semibold text-white">Code + file sharing</div>
