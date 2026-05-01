@@ -193,7 +193,23 @@ export const projectRouter = createRouter({
       if (!file) throw new Error("File not found");
       const [project] = await db.select().from(projects).where(eq(projects.id, file.projectId));
       if (project.ownerId !== ctx.user.id) throw new Error("Access denied");
-      await db.delete(projectFiles).where(eq(projectFiles.id, input.id));
+      if (file.type === "folder") {
+        const allFiles = await db.select().from(projectFiles).where(eq(projectFiles.projectId, file.projectId));
+        const idsToDelete = new Set<number>([file.id]);
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const item of allFiles) {
+            if (item.parentId && idsToDelete.has(item.parentId) && !idsToDelete.has(item.id)) {
+              idsToDelete.add(item.id);
+              changed = true;
+            }
+          }
+        }
+        await db.delete(projectFiles).where(inArray(projectFiles.id, Array.from(idsToDelete)));
+      } else {
+        await db.delete(projectFiles).where(eq(projectFiles.id, input.id));
+      }
       return { success: true };
     }),
 

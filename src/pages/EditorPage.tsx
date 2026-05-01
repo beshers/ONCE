@@ -14,7 +14,8 @@ import { toast } from "sonner";
 import {
   FileCode, Folder, Save, Play, MessageSquare,
   Plus, Trash2, Clock,
-  Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp
+  Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
+  ChevronDown, ChevronRight, FolderPlus
 } from "lucide-react";
 
 const languages = [
@@ -33,6 +34,9 @@ export default function EditorPage() {
   const [activeTab, setActiveTab] = useState("editor");
   const [newFileName, setNewFileName] = useState("");
   const [newFileLang, setNewFileLang] = useState("plaintext");
+  const [newItemType, setNewItemType] = useState<"file" | "folder">("file");
+  const [newParentId, setNewParentId] = useState("root");
+  const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
   const [createFileOpen, setCreateFileOpen] = useState(false);
   const [reviewText, setReviewText] = useState("");
   const [reviewLineStart, setReviewLineStart] = useState(0);
@@ -81,11 +85,16 @@ export default function EditorPage() {
   });
 
   const createFile = trpc.project.fileCreate.useMutation({
-    onSuccess: () => {
-      toast.success("File created!");
+    onSuccess: (data) => {
+      toast.success(newItemType === "folder" ? "Folder created!" : "File created!");
       utils.project.fileList.invalidate({ projectId: projectId! });
+      if (newItemType === "folder" && data.id) {
+        setExpandedFolders((folders) => new Set([...folders, data.id]));
+      }
       setCreateFileOpen(false);
       setNewFileName("");
+      setNewItemType("file");
+      setNewParentId("root");
     },
   });
 
@@ -116,6 +125,7 @@ export default function EditorPage() {
 
   const activeFile = files?.find((f) => f.id === activeFileId);
   const isModified = code !== originalCode;
+  const folders = (files || []).filter((item) => item.type === "folder");
 
   useEffect(() => {
     if (activeFile) {
@@ -146,6 +156,125 @@ export default function EditorPage() {
 
   const handleLineClick = (lineNum: number) => {
     setReviewLineStart(lineNum);
+  };
+
+  const openCreateDialog = (parentId: number | null = null, type: "file" | "folder" = "file") => {
+    setNewItemType(type);
+    setNewParentId(parentId ? String(parentId) : "root");
+    setCreateFileOpen(true);
+  };
+
+  const toggleFolder = (folderId: number) => {
+    setExpandedFolders((folders) => {
+      const next = new Set(folders);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateProjectItem = () => {
+    const name = newFileName.trim();
+    if (!name) return;
+    createFile.mutate({
+      projectId: projectId!,
+      parentId: newParentId === "root" ? undefined : Number(newParentId),
+      name,
+      type: newItemType,
+      content: newItemType === "file" ? "" : undefined,
+      language: newItemType === "file" ? newFileLang : "plaintext",
+    });
+  };
+
+  const handleDeleteProjectItem = (item: NonNullable<typeof files>[number]) => {
+    const message = item.type === "folder"
+      ? `Delete folder "${item.name}" and all files inside it?`
+      : `Delete file "${item.name}"?`;
+    if (!confirm(message)) return;
+    deleteFile.mutate({ id: item.id });
+  };
+
+  const renderFileTree = (parentId: number | null = null, depth = 0): JSX.Element[] => {
+    const children = (files || [])
+      .filter((item) => (item.parentId ?? null) === parentId)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+    return children.map((item) => {
+      const isFolder = item.type === "folder";
+      const isExpanded = expandedFolders.has(item.id);
+      return (
+        <div key={item.id}>
+          <div
+            className={`group flex items-center gap-1.5 rounded px-2 py-1.5 text-xs transition-all ${
+              activeFileId === item.id
+                ? "bg-cyan-500/10 text-cyan-400"
+                : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+            }`}
+            style={{ paddingLeft: `${8 + depth * 14}px` }}
+            onClick={() => {
+              if (isFolder) {
+                toggleFolder(item.id);
+              } else {
+                setActiveFileId(item.id);
+              }
+            }}
+          >
+            {isFolder ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFolder(item.id);
+                }}
+                className="text-slate-500 hover:text-slate-200"
+              >
+                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              </button>
+            ) : (
+              <span className="w-3" />
+            )}
+            {isFolder ? (
+              <Folder className="h-3.5 w-3.5 text-amber-400" />
+            ) : (
+              <FileCode className="h-3.5 w-3.5 text-sky-400" />
+            )}
+            <span className="min-w-0 flex-1 truncate">{item.name}</span>
+            {isFolder && (
+              <button
+                type="button"
+                title="Create inside folder"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setExpandedFolders((folders) => new Set([...folders, item.id]));
+                  openCreateDialog(item.id, "file");
+                }}
+                className="opacity-0 text-cyan-300 hover:text-cyan-200 group-hover:opacity-100"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
+            <button
+              type="button"
+              title="Delete"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleDeleteProjectItem(item);
+              }}
+              className="opacity-0 text-red-400 hover:text-red-300 group-hover:opacity-100"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+          {isFolder && isExpanded && renderFileTree(item.id, depth + 1)}
+        </div>
+      );
+    });
   };
 
   if (!projectId) {
@@ -260,73 +389,86 @@ export default function EditorPage() {
               <span className="text-[10px] uppercase font-semibold text-slate-600 tracking-wider">Explorer</span>
               <Dialog open={createFileOpen} onOpenChange={setCreateFileOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="w-6 h-6 text-slate-500 hover:text-white">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openCreateDialog(null, "file")}
+                    className="w-6 h-6 text-slate-500 hover:text-white"
+                  >
                     <Plus className="w-3.5 h-3.5" />
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="bg-[#13131f] border-white/10 text-white">
                   <DialogHeader>
-                    <DialogTitle>New File</DialogTitle>
+                    <DialogTitle>{newItemType === "folder" ? "New Folder" : "New File"}</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-3 pt-2">
-                    <Input
-                      value={newFileName}
-                      onChange={(e) => setNewFileName(e.target.value)}
-                      placeholder="filename.js"
-                      className="bg-white/5 border-white/10 text-white"
-                    />
-                    <Select value={newFileLang} onValueChange={setNewFileLang}>
+                    <Select value={newItemType} onValueChange={(value: "file" | "folder") => setNewItemType(value)}>
                       <SelectTrigger className="bg-white/5 border-white/10 text-white">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-[#1a1a2e] border-white/10">
-                        {languages.map((l) => (
-                          <SelectItem key={l} value={l} className="text-white">{l}</SelectItem>
+                        <SelectItem value="file" className="text-white">File</SelectItem>
+                        <SelectItem value="folder" className="text-white">Folder</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={newFileName}
+                      onChange={(e) => setNewFileName(e.target.value)}
+                      placeholder={newItemType === "folder" ? "components" : "filename.js"}
+                      className="bg-white/5 border-white/10 text-white"
+                    />
+                    <Select value={newParentId} onValueChange={setNewParentId}>
+                      <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1a1a2e] border-white/10">
+                        <SelectItem value="root" className="text-white">Project root</SelectItem>
+                        {folders.map((folder) => (
+                          <SelectItem key={folder.id} value={String(folder.id)} className="text-white">
+                            {folder.name}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {newItemType === "file" && (
+                      <Select value={newFileLang} onValueChange={setNewFileLang}>
+                        <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-[#1a1a2e] border-white/10">
+                          {languages.map((l) => (
+                            <SelectItem key={l} value={l} className="text-white">{l}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <Button
-                      onClick={() => createFile.mutate({
-                        projectId: projectId!,
-                        name: newFileName,
-                        type: "file",
-                        language: newFileLang,
-                      })}
+                      onClick={handleCreateProjectItem}
+                      disabled={createFile.isPending || !newFileName.trim()}
                       className="w-full bg-cyan-600 hover:bg-cyan-500 text-white"
                     >
-                      Create
+                      {createFile.isPending ? "Creating..." : newItemType === "folder" ? "Create folder" : "Create file"}
                     </Button>
                   </div>
                 </DialogContent>
               </Dialog>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => openCreateDialog(null, "folder")}
+                className="w-6 h-6 text-slate-500 hover:text-white"
+                title="New folder"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+              </Button>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              {(files || []).map((file) => (
-                <div
-                  key={file.id}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-xs transition-all ${
-                    activeFileId === file.id
-                      ? "bg-cyan-500/10 text-cyan-400"
-                      : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
-                  }`}
-                  onClick={() => setActiveFileId(file.id)}
-                >
-                  {file.type === "folder" ? (
-                    <Folder className="w-3.5 h-3.5 text-amber-400" />
-                  ) : (
-                    <FileCode className="w-3.5 h-3.5 text-sky-400" />
-                  )}
-                  <span className="truncate">{file.name}</span>
-                  {activeFileId === file.id && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); deleteFile.mutate({ id: file.id }); }}
-                      className="ml-auto text-red-400 hover:text-red-300 opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  )}
+              {files && files.length > 0 ? renderFileTree() : (
+                <div className="rounded-lg border border-dashed border-white/10 p-3 text-center text-xs text-slate-600">
+                  Create files and folders for this project.
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
