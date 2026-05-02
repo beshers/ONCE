@@ -14,6 +14,7 @@ import {
   Code2,
   FileCode2,
   Globe,
+  Image,
   Link2,
   Lock,
   Maximize2,
@@ -25,6 +26,7 @@ import {
   PictureInPicture2,
   Play,
   Plus,
+  Paperclip,
   Radio,
   ScanSearch,
   ScreenShare,
@@ -58,7 +60,8 @@ type EventKind =
   | "action-item"
   | "translation"
   | "drawing"
-  | "replay";
+  | "replay"
+  | "attachment";
 
 type EventMeta = {
   kind: EventKind;
@@ -84,6 +87,11 @@ type EventMeta = {
   mode?: "voice" | "video" | "screen";
   targetUserId?: string;
   signalData?: RTCSessionDescriptionInit | RTCIceCandidateInit | null;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  attachmentKind?: "file" | "image";
 };
 
 type IncomingCall = {
@@ -115,6 +123,13 @@ function makeGuestLink() {
       ? window.location.origin
       : "http://127.0.0.1:3000";
   return `${baseUrl}/guest/${token}`;
+}
+
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 export default function ChatPage() {
@@ -157,6 +172,7 @@ export default function ChatPage() {
   const [pollOptions, setPollOptions] = useState("Ship now\nReview once more\nSplit tasks");
   const [reaction, setReaction] = useState("++1");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
   const [callState, setCallState] = useState<
     "idle" | "outgoing" | "incoming" | "connecting" | "connected"
   >("idle");
@@ -168,6 +184,8 @@ export default function ChatPage() {
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [typingLabel, setTypingLabel] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
@@ -182,6 +200,9 @@ export default function ChatPage() {
   const typingClearRef = useRef<number | null>(null);
   const callModeRef = useRef<"voice" | "video">("voice");
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const ringtoneContextRef = useRef<AudioContext | null>(null);
+  const ringtoneTimerRef = useRef<number | null>(null);
+  const missedCallTimerRef = useRef<number | null>(null);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
 
@@ -392,6 +413,13 @@ export default function ChatPage() {
     if (activeRoom === "global") return "Global War Room";
     return rooms?.find((room) => String(room.id) === activeRoom)?.name || `Room ${activeRoom}`;
   }, [activeRoom, currentDirectUser, directRecipientId, rooms]);
+  const incomingCallerName = useMemo(() => {
+    if (!incomingCall) return "Someone";
+    const caller =
+      directThreads?.find((thread) => String(thread.user?.id) === incomingCall.fromUserId)?.user ||
+      (onlineUsers || []).find((candidate) => String(candidate.id) === incomingCall.fromUserId);
+    return caller?.name || caller?.username || "Someone";
+  }, [directThreads, incomingCall, onlineUsers]);
 
   const participants = useMemo(() => {
     if (directRecipientId) {
@@ -522,9 +550,64 @@ export default function ChatPage() {
   const meetingOptionButtonClass =
     "min-h-10 h-auto w-full justify-start rounded-xl px-3 py-2 text-left text-xs leading-snug whitespace-normal transition-colors";
 
+  function stopRingtone() {
+    if (ringtoneTimerRef.current) {
+      window.clearInterval(ringtoneTimerRef.current);
+      ringtoneTimerRef.current = null;
+    }
+  }
+
+  function playRingtone(mode: "voice" | "video") {
+    if (typeof window === "undefined" || ringtoneTimerRef.current) return;
+    const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextConstructor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
+    if (!AudioContextConstructor) return;
+
+    const context = ringtoneContextRef.current || new AudioContextConstructor();
+    ringtoneContextRef.current = context;
+    const frequencies = mode === "video" ? [660, 880] : [440, 660];
+    let index = 0;
+
+    const ring = () => {
+      if (context.state === "suspended") {
+        void context.resume().catch(() => undefined);
+      }
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = frequencies[index % frequencies.length];
+      oscillator.type = "sine";
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.6);
+      index += 1;
+    };
+
+    ring();
+    ringtoneTimerRef.current = window.setInterval(ring, 1400);
+  }
+
+  function showIncomingCallNotification(mode: "voice" | "video", senderId: string) {
+    if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
+    const caller = directThreads?.find((thread) => String(thread.user?.id) === senderId)?.user;
+    const name = caller?.name || caller?.username || "Someone";
+    const note = new Notification(`Incoming ${mode} call`, {
+      body: `${name} is calling you in OCNE Chat.`,
+      tag: `ocne-call-${senderId}`,
+      requireInteraction: true,
+    });
+    window.setTimeout(() => note.close(), 15000);
+  }
+
   function handleIncomingOffer(senderId: string, meta: EventMeta) {
     if (!meta.callId || !meta.signalData || !meta.mode) return;
     const mode = meta.mode === "video" ? "video" : "voice";
+    if (missedCallTimerRef.current) {
+      window.clearTimeout(missedCallTimerRef.current);
+    }
     activeCallIdRef.current = meta.callId;
     setActiveRoom("global");
     setDirectRecipientId(senderId);
@@ -538,6 +621,29 @@ export default function ChatPage() {
     callModeRef.current = mode;
     setCallState("incoming");
     setActionError(`${mode === "video" ? "Video" : "Voice"} call incoming.`);
+    playRingtone(mode);
+    showIncomingCallNotification(mode, senderId);
+    missedCallTimerRef.current = window.setTimeout(() => {
+      if (activeCallIdRef.current !== meta.callId) return;
+      void sendMessage.mutateAsync({
+        content: `${mode} call missed`,
+        receiverId: senderId,
+        messageType: "text",
+        metadata: JSON.stringify({
+          kind: "call",
+          title: "Missed call",
+          action: "missed",
+          callId: meta.callId,
+          mode,
+          targetUserId: senderId,
+        } satisfies EventMeta),
+      }).catch(() => undefined);
+      stopRingtone();
+      setIncomingCall(null);
+      setCallState("idle");
+      activeCallIdRef.current = null;
+      setActionError("Missed call.");
+    }, 45_000);
   }
 
   useEffect(() => {
@@ -556,6 +662,16 @@ export default function ChatPage() {
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     setBrowserNotificationsEnabled(Notification.permission === "granted");
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopRingtone();
+      if (missedCallTimerRef.current) {
+        window.clearTimeout(missedCallTimerRef.current);
+      }
+      void ringtoneContextRef.current?.close().catch(() => undefined);
+    };
   }, []);
 
   useEffect(() => {
@@ -601,6 +717,8 @@ export default function ChatPage() {
       String(incomingThread.latestMessage.senderId),
       incomingThread.latestMetadata as EventMeta,
     );
+  // handleIncomingOffer uses live refs/timers and should not restart this polling bridge every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directThreads, incomingCallOffers, user?.id]);
 
   useEffect(() => {
@@ -789,6 +907,11 @@ export default function ChatPage() {
   }
 
   async function cleanupActiveCall(sendEndSignal: boolean) {
+    stopRingtone();
+    if (missedCallTimerRef.current) {
+      window.clearTimeout(missedCallTimerRef.current);
+      missedCallTimerRef.current = null;
+    }
     if (sendEndSignal && directRecipientId && activeCallIdRef.current) {
       await sendWebRTCSignal(".", {
         kind: "call",
@@ -869,6 +992,11 @@ export default function ChatPage() {
   async function acceptIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
     try {
+      stopRingtone();
+      if (missedCallTimerRef.current) {
+        window.clearTimeout(missedCallTimerRef.current);
+        missedCallTimerRef.current = null;
+      }
       setActionError(null);
       activeCallIdRef.current = incomingCall.callId;
       setCallMode(incomingCall.mode);
@@ -909,6 +1037,11 @@ export default function ChatPage() {
 
   async function rejectIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
+    stopRingtone();
+    if (missedCallTimerRef.current) {
+      window.clearTimeout(missedCallTimerRef.current);
+      missedCallTimerRef.current = null;
+    }
     await sendWebRTCSignal(".", {
       kind: "call",
       title: "Call declined",
@@ -1120,7 +1253,7 @@ export default function ChatPage() {
     });
   }
 
-  async function sendStructuredMessage(content: string, meta: EventMeta, messageType: "text" | "code" | "file" = "text") {
+  async function sendStructuredMessage(content: string, meta: EventMeta, messageType: "text" | "code" | "file" | "image" = "text") {
     if (directRecipientId && !canCallCurrentDirectUser) {
       setActionError("You can message or call this person only after the friend request is accepted.");
       return;
@@ -1132,6 +1265,56 @@ export default function ChatPage() {
       messageType,
       metadata: JSON.stringify(meta),
     });
+  }
+
+  async function uploadAndSendFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+    if (directRecipientId && !canCallCurrentDirectUser) {
+      setActionError("You can send files to this person only after the friend request is accepted.");
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    setActionError(null);
+    try {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const response = await fetch("/api/chat/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result?.error || "Upload failed.");
+        }
+
+        const isImage = result.kind === "image" || String(result.mimeType || "").startsWith("image/");
+        await sendMessage.mutateAsync({
+          content: isImage ? `Photo: ${result.name}` : `File: ${result.name}`,
+          roomId: directRecipientId ? undefined : activeRoom,
+          receiverId: directRecipientId || undefined,
+          messageType: isImage ? "image" : "file",
+          metadata: JSON.stringify({
+            kind: "attachment",
+            title: isImage ? "Photo uploaded" : "File uploaded",
+            attachmentKind: isImage ? "image" : "file",
+            fileUrl: result.url,
+            fileName: result.name,
+            fileSize: result.size,
+            mimeType: result.mimeType,
+          } satisfies EventMeta),
+        });
+      }
+      await refetch();
+      await refetchDirectThreads();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Upload failed.");
+    } finally {
+      setIsUploadingAttachment(false);
+    }
   }
 
   function handleSend() {
@@ -1641,6 +1824,35 @@ export default function ChatPage() {
       );
     }
 
+    if (meta.kind === "attachment" && meta.fileUrl) {
+      const isImage = meta.attachmentKind === "image" || meta.mimeType?.startsWith("image/");
+      return (
+        <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-xs text-slate-200">
+          {isImage ? (
+            <a href={meta.fileUrl} target="_blank" rel="noreferrer" className="block">
+              <img src={meta.fileUrl} alt={meta.fileName || "Uploaded photo"} className="max-h-80 w-full object-contain bg-black/30" />
+            </a>
+          ) : (
+            <div className="flex items-center gap-3 p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-200">
+                <Paperclip className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium text-white">{meta.fileName || "Uploaded file"}</div>
+                <div className="mt-0.5 text-slate-500">{formatFileSize(meta.fileSize)} {meta.mimeType || ""}</div>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 border-t border-white/10 px-3 py-2">
+            <span className="min-w-0 truncate text-slate-400">{meta.fileName || meta.title}</span>
+            <a href={meta.fileUrl} target="_blank" rel="noreferrer" className="shrink-0 font-medium text-cyan-200 hover:text-cyan-100">
+              Open
+            </a>
+          </div>
+        </div>
+      );
+    }
+
     if (meta.kind === "schedule" || meta.kind === "minutes" || meta.kind === "annotation") {
       return (
         <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
@@ -1715,6 +1927,33 @@ export default function ChatPage() {
 
   return (
     <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1540px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#101624_0%,#070a10_42%,#05070b_100%)] p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
+      {callState === "incoming" && incomingCall && (
+        <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
+          <div className="flex items-start gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-950">
+              {incomingCall.mode === "video" ? <Video className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-white">
+                Incoming {incomingCall.mode} call
+              </div>
+              <div className="mt-1 truncate text-xs text-slate-400">
+                {incomingCallerName} is calling you. The ringtone will stop when you answer or decline.
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button className="bg-emerald-500 text-slate-950 hover:bg-emerald-400" onClick={() => void acceptIncomingCall()}>
+                  <Phone className="mr-2 h-4 w-4" />
+                  Answer
+                </Button>
+                <Button variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCall()}>
+                  <PhoneOff className="mr-2 h-4 w-4" />
+                  Decline
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:h-full lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
         <div className="border-b border-white/10 bg-white/[0.025] px-4 py-4">
           <div className="flex items-center justify-between">
@@ -2433,6 +2672,31 @@ export default function ChatPage() {
                   {typingLabel && (
                     <div className="mb-3 text-xs text-cyan-300">{typingLabel}</div>
                   )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => {
+                      if (event.target.files) {
+                        void uploadAndSendFiles(event.target.files);
+                      }
+                      event.target.value = "";
+                    }}
+                  />
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(event) => {
+                      if (event.target.files) {
+                        void uploadAndSendFiles(event.target.files);
+                      }
+                      event.target.value = "";
+                    }}
+                  />
                   <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-inner shadow-black/20">
                     <Textarea
                       value={messageText}
@@ -2443,6 +2707,26 @@ export default function ChatPage() {
                   </div>
                   <div className="mt-3 grid gap-3 sm:flex sm:items-center sm:justify-between">
                     <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingAttachment}
+                      >
+                        <Paperclip className="mr-2 h-4 w-4" />
+                        File
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={isUploadingAttachment}
+                      >
+                        <Image className="mr-2 h-4 w-4" />
+                        Photo
+                      </Button>
                       {["++1", "ship it", "need review"].map((emoji) => (
                         <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]" onClick={() => setReaction(emoji)}>
                           {emoji}
@@ -2451,7 +2735,7 @@ export default function ChatPage() {
                     </div>
                     <Button onClick={handleSend} disabled={!messageText.trim() || sendMessage.isPending} className="rounded-full bg-white text-black hover:bg-slate-200">
                       <Send className="mr-2 h-4 w-4" />
-                      Send
+                      {isUploadingAttachment ? "Uploading..." : "Send"}
                     </Button>
                   </div>
                 </div>
