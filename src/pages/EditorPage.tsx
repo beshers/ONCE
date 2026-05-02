@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ReactElement } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmbeddedTerminal from "@/components/EmbeddedTerminal";
 import CollaborativeCodeEditor from "@/components/CollaborativeCodeEditor";
 import DeviceEditorBridge from "@/components/DeviceEditorBridge";
-import LocalAgentPage from "@/pages/LocalAgentPage";
 import { toast } from "sonner";
 import {
   FileCode, Folder, Save, Play, MessageSquare,
@@ -31,6 +30,7 @@ const languages = [
 
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
+const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -1222,7 +1222,15 @@ export default function EditorPage() {
 
         <TabsContent value="local-agent" className="flex-1 mt-0 overflow-auto">
           {project?.localFilesEnabled ? (
-            <LocalAgentPage />
+            <Suspense
+              fallback={
+                <div className="rounded-xl border border-white/10 bg-[#13131f] p-5 text-sm text-slate-400">
+                  Loading terminal agent...
+                </div>
+              }
+            >
+              <LocalAgentPage />
+            </Suspense>
           ) : (
             <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-5 text-sm text-amber-100">
               <div className="flex items-center gap-2 font-semibold">
