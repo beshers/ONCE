@@ -222,6 +222,7 @@ export default function ChatPage() {
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneTimerRef = useRef<number | null>(null);
   const missedCallTimerRef = useRef<number | null>(null);
+  const isCleaningUpCallRef = useRef(false);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
@@ -965,8 +966,13 @@ export default function ChatPage() {
 
   function createPeerConnection(callId: string) {
     if (peerConnectionRef.current) {
+      peerConnectionRef.current.onconnectionstatechange = null;
+      peerConnectionRef.current.oniceconnectionstatechange = null;
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.ontrack = null;
       peerConnectionRef.current.close();
     }
+    isCleaningUpCallRef.current = false;
 
     setIceConnectionState("new");
     setPeerConnectionState("new");
@@ -1012,8 +1018,11 @@ export default function ChatPage() {
         setCallState("connected");
         setCallHealthMessage("Peer connection established.");
       }
-      if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
-        if (pc.connectionState === "failed" && directRecipientId) {
+      if (pc.connectionState === "disconnected") {
+        setCallHealthMessage("The call connection was interrupted. Waiting for the browser to recover it.");
+      }
+      if (pc.connectionState === "failed") {
+        if (directRecipientId) {
           void sendWebRTCSignal("Call connection failed", {
             kind: "call",
             title: "Call connection failed",
@@ -1047,6 +1056,8 @@ export default function ChatPage() {
   }
 
   async function cleanupActiveCall(sendEndSignal: boolean) {
+    if (isCleaningUpCallRef.current) return;
+    isCleaningUpCallRef.current = true;
     stopRingtone();
     if (missedCallTimerRef.current) {
       window.clearTimeout(missedCallTimerRef.current);
@@ -1063,7 +1074,14 @@ export default function ChatPage() {
       });
     }
 
-    peerConnectionRef.current?.close();
+    const peerConnection = peerConnectionRef.current;
+    if (peerConnection) {
+      peerConnection.onconnectionstatechange = null;
+      peerConnection.oniceconnectionstatechange = null;
+      peerConnection.onicecandidate = null;
+      peerConnection.ontrack = null;
+      peerConnection.close();
+    }
     peerConnectionRef.current = null;
     pendingIceCandidatesRef.current = [];
 
@@ -1095,6 +1113,9 @@ export default function ChatPage() {
     setIceConnectionState("new");
     setPeerConnectionState("new");
     activeCallIdRef.current = null;
+    window.setTimeout(() => {
+      isCleaningUpCallRef.current = false;
+    }, 0);
   }
 
   async function startDirectCall(mode: "voice" | "video") {
@@ -2080,7 +2101,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1600px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#0f1724_0%,#070a10_38%,#05070b_100%)] p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
+    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1600px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#0f1724_0%,#070a10_38%,#05070b_100%)] p-2 text-slate-100 lg:flex-row lg:gap-0 lg:p-0">
       {callState === "incoming" && incomingCall && (
         <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
           <div className="flex items-start gap-3">
@@ -2108,7 +2129,7 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:h-full lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
+      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
         <div className="border-b border-white/10 bg-[#0f1622] px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -2139,7 +2160,7 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <ScrollArea className="max-h-[460px] lg:h-[calc(100%-196px)] lg:max-h-none">
+        <div className="max-h-[460px] overflow-y-auto lg:max-h-none">
           <div className="space-y-5 p-3">
             <div className="space-y-3 rounded-2xl border border-cyan-500/15 bg-[#101722] p-3 shadow-lg shadow-black/20">
               <div className="flex items-center justify-between">
@@ -2441,11 +2462,11 @@ export default function ChatPage() {
               </div>
             </div>
           </div>
-        </ScrollArea>
+        </div>
       </Card>
 
-      <div className="min-w-0 flex-1 lg:h-full">
-        <Card className="min-h-full gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#080b12] p-0 shadow-2xl shadow-black/30 lg:h-full lg:rounded-none lg:border-y-0 lg:border-r-0">
+      <div className="min-w-0 flex-1">
+        <Card className="min-h-full gap-0 overflow-visible rounded-3xl border border-white/10 bg-[#080b12] p-0 shadow-2xl shadow-black/30 lg:rounded-none lg:border-y-0 lg:border-r-0">
           <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/96 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
