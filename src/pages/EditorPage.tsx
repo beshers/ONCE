@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactElement } from "react";
+import { useState, useEffect, useRef, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { Card } from "@/components/ui/card";
@@ -55,6 +55,7 @@ export default function EditorPage() {
   const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
   const [challengeMinutes, setChallengeMinutes] = useState("30");
   const [snippetDraft, setSnippetDraft] = useState("");
+  const loadedFileIdRef = useRef<number | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -102,6 +103,9 @@ export default function EditorPage() {
       setOriginalCode(code);
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: activeFileId! });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Could not save this file.");
     },
   });
 
@@ -156,18 +160,22 @@ export default function EditorPage() {
     : `<!doctype html><html><head><style>${activeFile?.language === "css" ? code : ""}</style></head><body><div id="app"></div><script>${activeFile?.language === "javascript" ? code : ""}</script></body></html>`;
 
   useEffect(() => {
-    if (activeFile) {
-      setCode(activeFile.content || "");
-      setOriginalCode(activeFile.content || "");
+    if (!activeFile) {
+      loadedFileIdRef.current = null;
+      setCode("");
+      setOriginalCode("");
+      return;
     }
-  }, [activeFile]);
 
-  useEffect(() => {
-    if (activeFile && !isModified) {
-      setCode(activeFile.content || "");
-      setOriginalCode(activeFile.content || "");
+    const nextContent = activeFile.content || "";
+    const switchedFiles = loadedFileIdRef.current !== activeFile.id;
+
+    if (switchedFiles || !isModified) {
+      loadedFileIdRef.current = activeFile.id;
+      setCode(nextContent);
+      setOriginalCode(nextContent);
     }
-  }, [activeFile, isModified]);
+  }, [activeFile?.id, activeFile?.content, isModified]);
 
   useEffect(() => {
     if (!projectId || !project?.collaborationMode || project.collaborationMode === "solo") return;
@@ -186,9 +194,13 @@ export default function EditorPage() {
     return () => window.clearInterval(timer);
   }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified, heartbeat]);
 
-  const handleSave = () => {
+  const saveActiveFile = async () => {
     if (!activeFileId) return;
-    saveFile.mutate({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
+    await saveFile.mutateAsync({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
+  };
+
+  const handleSave = () => {
+    void saveActiveFile().catch(() => undefined);
   };
 
   useEffect(() => {
@@ -830,7 +842,7 @@ export default function EditorPage() {
               projectFiles={files || []}
               isLiveModified={isModified}
               isSavingLive={saveFile.isPending}
-              onSaveLive={handleSave}
+              onSaveLive={saveActiveFile}
               onImport={setCode}
               onImportProject={importDeviceProject}
               disabled={!activeFile}

@@ -24,7 +24,7 @@ type DeviceEditorBridgeProps = {
   projectFiles?: BridgeFile[];
   isLiveModified?: boolean;
   isSavingLive?: boolean;
-  onSaveLive?: () => void;
+  onSaveLive?: () => Promise<void> | void;
   onImport: (content: string) => void;
   onImportProject?: (items: ImportedProjectItem[]) => Promise<void> | void;
   disabled?: boolean;
@@ -222,6 +222,11 @@ export default function DeviceEditorBridge({
     setIsBusy(true);
     setStatus("Saving the full OCNE project to the device...");
     try {
+      if (isLiveModified && onSaveLive) {
+        setStatus("Saving the active file to the live project first...");
+        await onSaveLive();
+      }
+
       const root = escapePowerShellString(localProjectPath.trim());
       const manifest = projectFiles.map((file) => ({
         path: projectPathFor(file),
