@@ -87,6 +87,8 @@ type EventMeta = {
   mode?: "voice" | "video" | "screen";
   targetUserId?: string;
   signalData?: RTCSessionDescriptionInit | RTCIceCandidateInit | null;
+  muted?: boolean;
+  cameraOff?: boolean;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
@@ -110,9 +112,20 @@ function parseMeta(raw?: string | null): EventMeta | null {
   }
 }
 
-const CALL_SIGNAL_ACTIONS = new Set(["offer", "answer", "ice", "reject", "end", "missed", "failed"]);
+const CALL_SIGNAL_ACTIONS = new Set([
+  "offer",
+  "answer",
+  "ice",
+  "reject",
+  "end",
+  "missed",
+  "failed",
+  "media-state",
+  "call-heartbeat",
+]);
 
 const turnServerUrl = String(import.meta.env.VITE_TURN_URL || "");
+const activeCallSessionKey = "ocne-active-direct-call";
 
 function getCallIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
@@ -121,8 +134,16 @@ function getCallIceServers(): RTCIceServer[] {
   ];
 
   if (turnServerUrl) {
+    const turnUrls = turnServerUrl
+      .split(",")
+      .map((url) => url.trim())
+      .filter(Boolean);
+    const tcpFallbackUrls = turnUrls
+      .filter((url) => url.startsWith("turn:") && !url.includes("transport="))
+      .map((url) => `${url}${url.includes("?") ? "&" : "?"}transport=tcp`);
+
     servers.push({
-      urls: turnServerUrl,
+      urls: [...turnUrls, ...tcpFallbackUrls],
       username: String(import.meta.env.VITE_TURN_USERNAME || ""),
       credential: String(import.meta.env.VITE_TURN_CREDENTIAL || ""),
     });
@@ -223,9 +244,13 @@ export default function ChatPage() {
   const ringtoneTimerRef = useRef<number | null>(null);
   const missedCallTimerRef = useRef<number | null>(null);
   const isCleaningUpCallRef = useRef(false);
+  const cleanupPromiseRef = useRef<Promise<void> | null>(null);
+  const outgoingCallPeerRef = useRef<string | null>(null);
+  const iceRestartAttemptsRef = useRef(0);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
+  const [remoteMediaState, setRemoteMediaState] = useState({ muted: false, cameraOff: false });
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>("new");
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>("new");
   const [callHealthMessage, setCallHealthMessage] = useState("Calls are ready when both users are online and browser permissions are allowed.");
@@ -239,7 +264,7 @@ export default function ChatPage() {
     { since: 0 },
     {
       enabled: Boolean(user?.id),
-      refetchInterval: callState === "idle" ? (enableWebSockets ? 10000 : 3000) : false,
+      refetchInterval: callState === "idle" || callState === "outgoing" ? (enableWebSockets ? 10000 : 3000) : false,
     },
   );
   const { data: callHistory } = trpc.chat.callHistory.useQuery(
@@ -396,13 +421,14 @@ export default function ChatPage() {
   trpc.chat.onIncomingCall.useSubscription(undefined, {
     enabled: enableWebSockets && Boolean(user?.id),
     onData: (event) => {
-      if (callState !== "idle") return;
       if (processedSignalIdsRef.current.has(event.messageId)) return;
       const meta = event.metadata as EventMeta;
       if (meta?.kind !== "call" || meta.action !== "offer" || !meta.callId || !meta.signalData || !meta.mode) return;
+      const senderId = String(event.senderId);
+      if (callState !== "idle" && !shouldAcceptCollidingOffer(senderId, meta.callId)) return;
 
       processedSignalIdsRef.current.add(event.messageId);
-      handleIncomingOffer(String(event.senderId), meta);
+      void handleIncomingOffer(senderId, meta);
       void utils.chat.messages.invalidate();
       void utils.chat.directThreads.invalidate();
       void utils.chat.callHistory.invalidate();
@@ -703,13 +729,42 @@ export default function ChatPage() {
     window.setTimeout(() => note.close(), 15000);
   }
 
-  function handleIncomingOffer(senderId: string, meta: EventMeta) {
+  function shouldAcceptCollidingOffer(senderId: string, incomingCallId: string) {
+    if (callState !== "outgoing" || outgoingCallPeerRef.current !== senderId || !activeCallIdRef.current) {
+      return false;
+    }
+    return incomingCallId.localeCompare(activeCallIdRef.current) < 0;
+  }
+
+  async function handleIncomingOffer(senderId: string, meta: EventMeta) {
     if (!meta.callId || !meta.signalData || !meta.mode) return;
+    if (callState !== "idle") {
+      if (!shouldAcceptCollidingOffer(senderId, meta.callId)) {
+        await sendMessage.mutateAsync({
+          content: "Call collision resolved",
+          receiverId: senderId,
+          messageType: "text",
+          metadata: JSON.stringify({
+            kind: "call",
+            title: "Call declined",
+            action: "reject",
+            callId: meta.callId,
+            mode: meta.mode === "video" ? "video" : "voice",
+            targetUserId: senderId,
+            note: "Another call setup is already in progress.",
+          } satisfies EventMeta),
+        }).catch(() => undefined);
+        return;
+      }
+      await cleanupActiveCall(false);
+    }
+
     const mode = meta.mode === "video" ? "video" : "voice";
     if (missedCallTimerRef.current) {
       window.clearTimeout(missedCallTimerRef.current);
     }
     activeCallIdRef.current = meta.callId;
+    outgoingCallPeerRef.current = null;
     setActiveRoom("global");
     setDirectRecipientId(senderId);
     setIncomingCall({
@@ -786,7 +841,51 @@ export default function ChatPage() {
   }, [browserNotificationsEnabled, notificationUnread]);
 
   useEffect(() => {
-    if (callState !== "idle" || !user?.id) return;
+    if (typeof window === "undefined") return;
+    const savedCall = window.sessionStorage.getItem(activeCallSessionKey);
+    if (!savedCall) return;
+    window.sessionStorage.removeItem(activeCallSessionKey);
+    setActionError("The previous direct call was interrupted by a page reload. Start the call again to create a fresh peer connection.");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!directRecipientId || callState === "idle" || callState === "incoming" || !activeCallIdRef.current) {
+      window.sessionStorage.removeItem(activeCallSessionKey);
+      return;
+    }
+    window.sessionStorage.setItem(
+      activeCallSessionKey,
+      JSON.stringify({
+        callId: activeCallIdRef.current,
+        peerId: directRecipientId,
+        mode: callModeRef.current,
+        state: callState,
+        savedAt: Date.now(),
+      }),
+    );
+  }, [callState, directRecipientId]);
+
+  useEffect(() => {
+    if (!directRecipientId || !activeCallIdRef.current || callState === "idle" || callState === "incoming") return;
+    const timer = window.setInterval(() => {
+      if (!activeCallIdRef.current) return;
+      void sendWebRTCSignal(".", {
+        kind: "call",
+        title: "Call heartbeat",
+        action: "call-heartbeat",
+        callId: activeCallIdRef.current,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+      });
+    }, 15000);
+    return () => window.clearInterval(timer);
+  // sendWebRTCSignal is intentionally excluded because it is a local helper around the current direct recipient.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState, directRecipientId]);
+
+  useEffect(() => {
+    if (!user?.id || (callState !== "idle" && callState !== "outgoing")) return;
     const incomingOffer = (incomingCallOffers || []).find((entry) => {
       const meta = entry.metadata as EventMeta | null;
       if (!entry.message || !meta || !isCallSignal(meta)) return false;
@@ -794,11 +893,12 @@ export default function ChatPage() {
       if (processedSignalIdsRef.current.has(entry.message.id)) return false;
       if (String(entry.message.senderId) === String(user.id)) return false;
       if (String(entry.message.receiverId) !== String(user.id)) return false;
+      if (callState !== "idle" && !shouldAcceptCollidingOffer(String(entry.message.senderId), meta.callId)) return false;
       return true;
     });
     if (incomingOffer?.message) {
       processedSignalIdsRef.current.add(incomingOffer.message.id);
-      handleIncomingOffer(String(incomingOffer.message.senderId), incomingOffer.metadata as EventMeta);
+      void handleIncomingOffer(String(incomingOffer.message.senderId), incomingOffer.metadata as EventMeta);
       return;
     }
 
@@ -810,11 +910,12 @@ export default function ChatPage() {
       if (processedSignalIdsRef.current.has(latest.id)) return false;
       if (String(latest.senderId) === String(user.id)) return false;
       if (String(latest.receiverId) !== String(user.id)) return false;
+      if (callState !== "idle" && !shouldAcceptCollidingOffer(String(latest.senderId), meta.callId)) return false;
       return Date.now() - new Date(latest.createdAt).getTime() < 120_000;
     });
     if (!incomingThread?.latestMessage) return;
     processedSignalIdsRef.current.add(incomingThread.latestMessage.id);
-    handleIncomingOffer(
+    void handleIncomingOffer(
       String(incomingThread.latestMessage.senderId),
       incomingThread.latestMetadata as EventMeta,
     );
@@ -881,29 +982,62 @@ export default function ChatPage() {
         if (String(entry.message.senderId) === String(user?.id)) continue;
         if (meta.targetUserId && String(meta.targetUserId) !== String(user?.id)) continue;
 
-        if (meta.action === "offer" && meta.signalData && meta.mode && callState === "idle") {
-          handleIncomingOffer(String(entry.message.senderId), meta);
+        if (
+          meta.action === "offer" &&
+          meta.signalData &&
+          meta.mode &&
+          activeCallIdRef.current === meta.callId &&
+          peerConnectionRef.current
+        ) {
+          const pc = peerConnectionRef.current;
+          await pc.setRemoteDescription(
+            new RTCSessionDescription(meta.signalData as RTCSessionDescriptionInit),
+          );
+          await flushPendingIceCandidates(pc);
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await sendWebRTCSignal(".", {
+            kind: "call",
+            title: "Call reconnection accepted",
+            action: "answer",
+            callId: meta.callId,
+            mode: meta.mode === "video" ? "video" : "voice",
+            targetUserId: String(entry.message.senderId),
+            signalData: answer,
+          });
+          setCallState("connecting");
+          continue;
+        }
+
+        if (meta.action === "offer" && meta.signalData && meta.mode) {
+          await handleIncomingOffer(String(entry.message.senderId), meta);
         }
 
         if (meta.action === "answer" && meta.signalData && activeCallIdRef.current === meta.callId) {
-          await peerConnectionRef.current?.setRemoteDescription(
+          const pc = peerConnectionRef.current;
+          await pc?.setRemoteDescription(
             new RTCSessionDescription(meta.signalData as RTCSessionDescriptionInit),
           );
-          for (const candidate of pendingIceCandidatesRef.current) {
-            await peerConnectionRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
-          }
-          pendingIceCandidatesRef.current = [];
+          await flushPendingIceCandidates(pc);
           setCallState("connecting");
         }
 
         if (meta.action === "ice" && meta.signalData && activeCallIdRef.current === meta.callId) {
-          if (peerConnectionRef.current?.remoteDescription) {
-            await peerConnectionRef.current.addIceCandidate(
+          const pc = peerConnectionRef.current;
+          if (pc?.remoteDescription) {
+            await pc.addIceCandidate(
               new RTCIceCandidate(meta.signalData as RTCIceCandidateInit),
             );
           } else {
             pendingIceCandidatesRef.current.push(meta.signalData as RTCIceCandidateInit);
           }
+        }
+
+        if (meta.action === "media-state" && activeCallIdRef.current === meta.callId) {
+          setRemoteMediaState({
+            muted: Boolean(meta.muted),
+            cameraOff: Boolean(meta.cameraOff),
+          });
         }
 
         if (meta.action === "reject" && activeCallIdRef.current === meta.callId) {
@@ -931,6 +1065,30 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directRecipientId, enrichedMessages, user?.id]);
 
+  function attachStreamToVideo(video: HTMLVideoElement | null, stream: MediaStream) {
+    if (!video) return;
+    video.srcObject = stream;
+    void video.play().catch(() => {
+      setCallHealthMessage("Browser autoplay blocked the call preview. Click the video area to resume playback.");
+    });
+  }
+
+  async function flushPendingIceCandidates(pc: RTCPeerConnection | null | undefined) {
+    if (!pc) {
+      pendingIceCandidatesRef.current = [];
+      return;
+    }
+    while (pendingIceCandidatesRef.current.length) {
+      const candidate = pendingIceCandidatesRef.current.shift();
+      if (!candidate) continue;
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch {
+        setCallHealthMessage("One queued network candidate could not be applied. The call will continue trying other paths.");
+      }
+    }
+  }
+
   async function ensureLocalStream(mode: "voice" | "video") {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("Your browser does not allow microphone or camera access on this page.");
@@ -955,13 +1113,49 @@ export default function ChatPage() {
       video: mode === "video",
     });
     localStreamRef.current = stream;
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
+    attachStreamToVideo(localVideoRef.current, stream);
     setHasLocalStream(true);
     setIsMuted(false);
     setIsCameraOff(mode === "voice");
     return stream;
+  }
+
+  async function attemptIceRestart(pc: RTCPeerConnection, callId: string) {
+    if (!directRecipientId || activeCallIdRef.current !== callId) return;
+    if (iceRestartAttemptsRef.current >= 2) {
+      setCallHealthMessage("ICE restart failed twice. Ending the call so both sides can retry cleanly.");
+      await sendWebRTCSignal("Call connection failed", {
+        kind: "call",
+        title: "Call connection failed",
+        action: "failed",
+        callId,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+        note: "WebRTC could not recover the media path after ICE restart attempts.",
+      }).catch(() => undefined);
+      await cleanupActiveCall(false);
+      return;
+    }
+
+    iceRestartAttemptsRef.current += 1;
+    setCallHealthMessage("Connection lost. Attempting an ICE restart...");
+    try {
+      pc.restartIce();
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      await sendWebRTCSignal("Call reconnecting", {
+        kind: "call",
+        title: "Call reconnection offer",
+        action: "offer",
+        callId,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+        signalData: offer,
+      });
+    } catch (error) {
+      setCallHealthMessage(error instanceof Error ? error.message : "ICE restart failed.");
+      await cleanupActiveCall(true);
+    }
   }
 
   function createPeerConnection(callId: string) {
@@ -976,6 +1170,7 @@ export default function ChatPage() {
 
     setIceConnectionState("new");
     setPeerConnectionState("new");
+    iceRestartAttemptsRef.current = 0;
     setCallHealthMessage(turnServerUrl ? "Using STUN plus configured TURN relay for this call." : "Using public STUN only. Some corporate or strict NAT networks may need TURN.");
 
     const pc = new RTCPeerConnection({
@@ -1006,7 +1201,7 @@ export default function ChatPage() {
         remoteStreamRef.current?.addTrack(track);
       });
       if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+        attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current);
       }
       setHasRemoteStream(true);
       setCallState("connected");
@@ -1022,19 +1217,7 @@ export default function ChatPage() {
         setCallHealthMessage("The call connection was interrupted. Waiting for the browser to recover it.");
       }
       if (pc.connectionState === "failed") {
-        if (directRecipientId) {
-          void sendWebRTCSignal("Call connection failed", {
-            kind: "call",
-            title: "Call connection failed",
-            action: "failed",
-            callId,
-            mode: callModeRef.current,
-            targetUserId: directRecipientId,
-            note: "WebRTC peer connection failed. TURN may be required for this network.",
-          });
-          setCallHealthMessage("WebRTC failed to connect. A TURN relay is probably needed for this network.");
-        }
-        void cleanupActiveCall(false);
+        void attemptIceRestart(pc, callId);
       }
     };
 
@@ -1044,10 +1227,11 @@ export default function ChatPage() {
         setCallHealthMessage("Checking network path between both browsers...");
       }
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        iceRestartAttemptsRef.current = 0;
         setCallHealthMessage("Media path is connected.");
       }
       if (pc.iceConnectionState === "failed") {
-        setCallHealthMessage("ICE failed. This usually means NAT/firewall traversal needs a TURN server.");
+        void attemptIceRestart(pc, callId);
       }
     };
 
@@ -1056,66 +1240,99 @@ export default function ChatPage() {
   }
 
   async function cleanupActiveCall(sendEndSignal: boolean) {
-    if (isCleaningUpCallRef.current) return;
+    if (cleanupPromiseRef.current) {
+      await cleanupPromiseRef.current;
+      return;
+    }
+
     isCleaningUpCallRef.current = true;
-    stopRingtone();
-    if (missedCallTimerRef.current) {
-      window.clearTimeout(missedCallTimerRef.current);
-      missedCallTimerRef.current = null;
-    }
-    if (sendEndSignal && directRecipientId && activeCallIdRef.current) {
-      await sendWebRTCSignal(".", {
-        kind: "call",
-        title: "Call ended",
-        action: "end",
-        callId: activeCallIdRef.current,
-        mode: callModeRef.current,
-        targetUserId: directRecipientId,
-      });
-    }
+    const cleanupPeerConnection = peerConnectionRef.current;
+    const cleanupLocalStream = localStreamRef.current;
+    const cleanupRemoteStream = remoteStreamRef.current;
+    const cleanupScreenTrack = pendingScreenTrackRef.current;
+    const cleanupCallId = activeCallIdRef.current;
 
-    const peerConnection = peerConnectionRef.current;
-    if (peerConnection) {
-      peerConnection.onconnectionstatechange = null;
-      peerConnection.oniceconnectionstatechange = null;
-      peerConnection.onicecandidate = null;
-      peerConnection.ontrack = null;
-      peerConnection.close();
-    }
-    peerConnectionRef.current = null;
-    pendingIceCandidatesRef.current = [];
+    cleanupPromiseRef.current = (async () => {
+      stopRingtone();
+      if (missedCallTimerRef.current) {
+        window.clearTimeout(missedCallTimerRef.current);
+        missedCallTimerRef.current = null;
+      }
+      if (sendEndSignal && directRecipientId && cleanupCallId) {
+        await sendWebRTCSignal(".", {
+          kind: "call",
+          title: "Call ended",
+          action: "end",
+          callId: cleanupCallId,
+          mode: callModeRef.current,
+          targetUserId: directRecipientId,
+        }).catch(() => undefined);
+      }
 
-    pendingScreenTrackRef.current?.stop();
-    pendingScreenTrackRef.current = null;
+      if (cleanupPeerConnection) {
+        cleanupPeerConnection.onconnectionstatechange = null;
+        cleanupPeerConnection.oniceconnectionstatechange = null;
+        cleanupPeerConnection.onicecandidate = null;
+        cleanupPeerConnection.ontrack = null;
+        cleanupPeerConnection.close();
+      }
+      if (peerConnectionRef.current === cleanupPeerConnection) {
+        peerConnectionRef.current = null;
+      }
+      pendingIceCandidatesRef.current = [];
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
-    mediaRecorderRef.current = null;
+      cleanupScreenTrack?.stop();
+      if (pendingScreenTrackRef.current === cleanupScreenTrack) {
+        pendingScreenTrackRef.current = null;
+      }
 
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
-    remoteStreamRef.current = null;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      mediaRecorderRef.current = null;
 
-    if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      cleanupLocalStream?.getTracks().forEach((track) => track.stop());
+      if (localStreamRef.current === cleanupLocalStream) {
+        localStreamRef.current = null;
+      }
+      cleanupRemoteStream?.getTracks().forEach((track) => track.stop());
+      if (remoteStreamRef.current === cleanupRemoteStream) {
+        remoteStreamRef.current = null;
+      }
 
-    setHasLocalStream(false);
-    setHasRemoteStream(false);
-    setIncomingCall(null);
-    setIsSharingScreen(false);
-    setIsMuted(false);
-    setIsCameraOff(false);
-    setRecording(false);
-    setCallState("idle");
-    setRoomMediaMode("idle");
-    setIceConnectionState("new");
-    setPeerConnectionState("new");
-    activeCallIdRef.current = null;
-    window.setTimeout(() => {
+      if (localVideoRef.current && localVideoRef.current.srcObject === cleanupLocalStream) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject === cleanupRemoteStream) {
+        remoteVideoRef.current.srcObject = null;
+      }
+
+      setHasLocalStream(false);
+      setHasRemoteStream(false);
+      setIncomingCall(null);
+      setIsSharingScreen(false);
+      setIsMuted(false);
+      setIsCameraOff(false);
+      setRemoteMediaState({ muted: false, cameraOff: false });
+      setRecording(false);
+      setCallState("idle");
+      setRoomMediaMode("idle");
+      setIceConnectionState("new");
+      setPeerConnectionState("new");
+      outgoingCallPeerRef.current = null;
+      iceRestartAttemptsRef.current = 0;
+      if (activeCallIdRef.current === cleanupCallId) {
+        activeCallIdRef.current = null;
+      }
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(activeCallSessionKey);
+      }
+    })().finally(() => {
+      cleanupPromiseRef.current = null;
       isCleaningUpCallRef.current = false;
-    }, 0);
+    });
+
+    await cleanupPromiseRef.current;
   }
 
   async function startDirectCall(mode: "voice" | "video") {
@@ -1124,9 +1341,13 @@ export default function ChatPage() {
       setActionError("You can start voice and video calls only after the friend request is accepted.");
       return;
     }
+    if (cleanupPromiseRef.current) {
+      await cleanupPromiseRef.current;
+    }
     setActionError(null);
     const callId = crypto.randomUUID();
     activeCallIdRef.current = callId;
+    outgoingCallPeerRef.current = directRecipientId;
     setCallMode(mode);
     callModeRef.current = mode;
     setCallState("outgoing");
@@ -1155,6 +1376,9 @@ export default function ChatPage() {
   async function acceptIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
     try {
+      if (cleanupPromiseRef.current) {
+        await cleanupPromiseRef.current;
+      }
       stopRingtone();
       if (missedCallTimerRef.current) {
         window.clearTimeout(missedCallTimerRef.current);
@@ -1171,10 +1395,7 @@ export default function ChatPage() {
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-      for (const candidate of pendingIceCandidatesRef.current) {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      }
-      pendingIceCandidatesRef.current = [];
+      await flushPendingIceCandidates(pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -1223,6 +1444,18 @@ export default function ChatPage() {
       track.enabled = !nextMuted;
     });
     setIsMuted(nextMuted);
+    if (directRecipientId && activeCallIdRef.current) {
+      void sendWebRTCSignal(".", {
+        kind: "call",
+        title: "Media state changed",
+        action: "media-state",
+        callId: activeCallIdRef.current,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+        muted: nextMuted,
+        cameraOff: isCameraOff,
+      });
+    }
   }
 
   function toggleCamera() {
@@ -1231,6 +1464,18 @@ export default function ChatPage() {
       track.enabled = !nextOff;
     });
     setIsCameraOff(nextOff);
+    if (directRecipientId && activeCallIdRef.current) {
+      void sendWebRTCSignal(".", {
+        kind: "call",
+        title: "Media state changed",
+        action: "media-state",
+        callId: activeCallIdRef.current,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+        muted: isMuted,
+        cameraOff: nextOff,
+      });
+    }
   }
 
   async function handleToggleRecording() {
@@ -1779,28 +2024,19 @@ export default function ChatPage() {
   }
 
   async function startRoomMedia(mode: "voice" | "video") {
-    setActionError(null);
-    const stream = await ensureLocalStream(mode);
-    setCallMode(mode);
-    setCallState("connected");
-    setRoomMediaMode(mode);
-    if (mode === "voice") {
-      stream.getVideoTracks().forEach((track) => {
-        track.enabled = false;
-      });
-    }
+    setActionError(
+      `${mode === "voice" ? "Voice" : "Video"} rooms need an SFU or mesh WebRTC signaling before they can carry real multi-party audio/video. Direct one-to-one calls are available now.`,
+    );
     await sendStructuredMessage(
-      `${mode === "voice" ? "Voice" : "Video"} room call started with ${bandwidthMode} network mode, ${callBackground} background, and ${encrypted ? "encrypted" : "unencrypted"} media.`,
+      `${mode === "voice" ? "Voice" : "Video"} room call was requested, but multi-party media is not enabled yet.`,
       {
         kind: "call",
-        title: `${mode === "voice" ? "Voice" : "Video"} room call started`,
-        action: "started",
+        title: "Room media unavailable",
+        action: "failed",
         mode,
-        background: callBackground,
-        quality: bandwidthMode,
-        encrypted,
+        note: "Room voice/video needs an SFU such as LiveKit, Mediasoup, Daily, or a mesh signaling layer.",
       },
-    );
+    ).catch(() => undefined);
   }
 
   async function startRoomScreenShare() {
@@ -1837,9 +2073,7 @@ export default function ChatPage() {
       setRoomMediaMode("idle");
       setCallState("idle");
     });
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = displayStream;
-    }
+    attachStreamToVideo(localVideoRef.current, displayStream);
     setCallMode("video");
     setCallState("connected");
     setIsSharingScreen(true);
@@ -3167,7 +3401,12 @@ export default function ChatPage() {
                       </div>
                       <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
                         <div className="border-b border-white/5 px-3 py-2 text-xs font-medium text-slate-300">
-                          {roomName}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>{roomName}</span>
+                            <span className="text-[10px] text-slate-500">
+                              {remoteMediaState.muted ? "Muted" : "Mic on"} / {remoteMediaState.cameraOff ? "Camera off" : "Camera on"}
+                            </span>
+                          </div>
                         </div>
                         <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
                           <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
