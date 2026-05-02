@@ -4,8 +4,8 @@ import { EventEmitter } from "events";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { incrementUserStats } from "./queries/user-stats";
-import { messages, chatRooms, chatRoomMembers, users, notifications, friends } from "@db/schema";
-import { eq, and, desc, sql, or, gt, inArray } from "drizzle-orm";
+import { messages, chatRooms, chatRoomMembers, users, notifications, friends, chatCalls } from "@db/schema";
+import { eq, and, desc, sql, or, gt, inArray, lt } from "drizzle-orm";
 
 const roomSettingsSchema = z.object({
   isPrivate: z.boolean().default(false),
@@ -31,6 +31,110 @@ function parseMessageMetadata(raw?: string | null): Record<string, unknown> | nu
   } catch {
     return null;
   }
+}
+
+function getCallMetadata(input?: string | null) {
+  const metadata = parseMessageMetadata(input);
+  if (metadata?.kind !== "call" || typeof metadata.action !== "string" || typeof metadata.callId !== "string") {
+    return { metadata, call: null };
+  }
+
+  return {
+    metadata,
+    call: {
+      callId: metadata.callId,
+      action: metadata.action,
+      mode: metadata.mode === "video" ? "video" : "voice",
+      reason: typeof metadata.note === "string" ? metadata.note : undefined,
+    },
+  };
+}
+
+async function markStaleRingingCallsMissed(db: ReturnType<typeof getDb>, userId: string) {
+  const staleBefore = new Date(Date.now() - 60_000);
+  await db
+    .update(chatCalls)
+    .set({
+      status: "missed",
+      endedAt: new Date(),
+      lastSignalAt: new Date(),
+      failureReason: "No answer before the call timeout.",
+    })
+    .where(
+      and(
+        or(eq(chatCalls.receiverId, userId), eq(chatCalls.callerId, userId)),
+        eq(chatCalls.status, "ringing"),
+        lt(chatCalls.createdAt, staleBefore),
+      ),
+    );
+}
+
+async function recordCallSignal(
+  db: ReturnType<typeof getDb>,
+  params: {
+    senderId: string;
+    receiverId: string | null;
+    messageId: number;
+    metadataRaw?: string | null;
+  },
+) {
+  if (!params.receiverId) return;
+  const { metadata, call } = getCallMetadata(params.metadataRaw);
+  if (!call) return;
+
+  const now = new Date();
+  if (call.action === "offer") {
+    await db
+      .insert(chatCalls)
+      .values({
+        callId: call.callId,
+        callerId: params.senderId,
+        receiverId: params.receiverId,
+        mode: call.mode,
+        status: "ringing",
+        offerMessageId: params.messageId,
+        lastSignalAt: now,
+        metadata: metadata ? JSON.stringify(metadata) : undefined,
+      })
+      .onDuplicateKeyUpdate({
+        set: {
+          status: "ringing",
+          offerMessageId: params.messageId,
+          lastSignalAt: now,
+          metadata: metadata ? JSON.stringify(metadata) : undefined,
+        },
+      });
+    return;
+  }
+
+  const next =
+    call.action === "answer"
+      ? { status: "accepted" as const, answeredAt: now, endedAt: undefined }
+      : call.action === "reject"
+        ? { status: "rejected" as const, answeredAt: undefined, endedAt: now }
+        : call.action === "missed"
+          ? { status: "missed" as const, answeredAt: undefined, endedAt: now }
+          : call.action === "failed"
+            ? { status: "failed" as const, answeredAt: undefined, endedAt: now }
+            : call.action === "end"
+              ? { status: "ended" as const, answeredAt: undefined, endedAt: now }
+              : null;
+
+  if (!next) {
+    await db.update(chatCalls).set({ lastSignalAt: now }).where(eq(chatCalls.callId, call.callId));
+    return;
+  }
+
+  await db
+    .update(chatCalls)
+    .set({
+      status: next.status,
+      answeredAt: next.answeredAt,
+      endedAt: next.endedAt,
+      lastSignalAt: now,
+      failureReason: call.reason,
+    })
+    .where(eq(chatCalls.callId, call.callId));
 }
 
 async function ensureRoomAccess(db: ReturnType<typeof getDb>, roomId: number, userId: string) {
@@ -345,6 +449,7 @@ export const chatRouter = createRouter({
     .input(z.object({ since: z.number().default(0) }).optional())
     .query(async ({ ctx, input }) => {
       const db = getDb();
+      await markStaleRingingCallsMissed(db, ctx.user.id);
       const conditions = [
         eq(messages.receiverId, ctx.user.id),
         sql`${messages.roomId} IS NULL`,
@@ -380,6 +485,23 @@ export const chatRouter = createRouter({
           );
         })
         .reverse();
+    }),
+
+  callHistory: authedQuery
+    .input(z.object({ limit: z.number().min(1).max(100).default(30) }).optional())
+    .query(async ({ ctx, input }) => {
+      const db = getDb();
+      await markStaleRingingCallsMissed(db, ctx.user.id);
+      return db
+        .select({
+          call: chatCalls,
+          caller: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
+        })
+        .from(chatCalls)
+        .leftJoin(users, eq(chatCalls.callerId, users.id))
+        .where(or(eq(chatCalls.callerId, ctx.user.id), eq(chatCalls.receiverId, ctx.user.id)))
+        .orderBy(desc(chatCalls.createdAt))
+        .limit(input?.limit || 30);
     }),
 
   createRoom: authedQuery
@@ -757,6 +879,13 @@ export const chatRouter = createRouter({
         })
         .$returningId();
 
+      await recordCallSignal(db, {
+        senderId: ctx.user.id,
+        receiverId: storedReceiverId,
+        messageId: id,
+        metadataRaw: input.metadata,
+      });
+
       await incrementUserStats(ctx.user.id, { messagesSent: 1, xp: 5 });
 
       clearTypingTimer(storedRoomId, storedReceiverId, String(ctx.user.id));
@@ -769,18 +898,21 @@ export const chatRouter = createRouter({
       });
 
       if (input.receiverId && input.receiverId !== ctx.user.id) {
-        const metadata = parseMessageMetadata(input.metadata);
-        const isCallOffer = metadata?.kind === "call" && metadata?.action === "offer";
+        const { metadata, call } = getCallMetadata(input.metadata);
+        const isCallOffer = call?.action === "offer";
+        const isMissedCall = call?.action === "missed";
         await createChatNotification(
           db,
           input.receiverId,
           ctx.user.id,
-          isCallOffer ? "Incoming call" : "New direct message",
+          isCallOffer ? "Incoming call" : isMissedCall ? "Missed call" : "New direct message",
           isCallOffer
             ? `${ctx.user.name || ctx.user.username} is calling you`
+            : isMissedCall
+              ? `${ctx.user.name || ctx.user.username} missed your call`
             : `${ctx.user.name || ctx.user.username}: ${input.content.slice(0, 120)}`,
           isCallOffer ? "system" : "mention",
-          isCallOffer ? "chat_call" : "chat_dm",
+          isCallOffer || isMissedCall ? "chat_call" : "chat_dm",
         );
         if (isCallOffer) {
           emitChatEvent("incomingCall", {

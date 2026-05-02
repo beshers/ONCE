@@ -110,7 +110,26 @@ function parseMeta(raw?: string | null): EventMeta | null {
   }
 }
 
-const CALL_SIGNAL_ACTIONS = new Set(["offer", "answer", "ice", "reject", "end"]);
+const CALL_SIGNAL_ACTIONS = new Set(["offer", "answer", "ice", "reject", "end", "missed", "failed"]);
+
+const turnServerUrl = String(import.meta.env.VITE_TURN_URL || "");
+
+function getCallIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  if (turnServerUrl) {
+    servers.push({
+      urls: turnServerUrl,
+      username: String(import.meta.env.VITE_TURN_USERNAME || ""),
+      credential: String(import.meta.env.VITE_TURN_CREDENTIAL || ""),
+    });
+  }
+
+  return servers;
+}
 
 function isCallSignal(meta: EventMeta | null) {
   return meta?.kind === "call" && Boolean(meta.action && CALL_SIGNAL_ACTIONS.has(meta.action));
@@ -205,6 +224,10 @@ export default function ChatPage() {
   const missedCallTimerRef = useRef<number | null>(null);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
+  const [callSoundsReady, setCallSoundsReady] = useState(false);
+  const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>("new");
+  const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>("new");
+  const [callHealthMessage, setCallHealthMessage] = useState("Calls are ready when both users are online and browser permissions are allowed.");
 
   const { data: rooms, refetch: refetchRooms } = trpc.chat.rooms.useQuery();
   const { data: publicRooms, refetch: refetchPublicRooms } = trpc.chat.publicRooms.useQuery();
@@ -216,6 +239,13 @@ export default function ChatPage() {
     {
       enabled: Boolean(user?.id),
       refetchInterval: callState === "idle" ? (enableWebSockets ? 10000 : 3000) : false,
+    },
+  );
+  const { data: callHistory } = trpc.chat.callHistory.useQuery(
+    { limit: 8 },
+    {
+      enabled: Boolean(user?.id),
+      refetchInterval: callState !== "idle" ? 3000 : 20000,
     },
   );
   const { data: onlineUsers } = trpc.user.onlineUsers.useQuery(undefined, {
@@ -268,6 +298,7 @@ export default function ChatPage() {
       setMessageText("");
       refetch();
       refetchDirectThreads();
+      void utils.chat.callHistory.invalidate();
     },
     onError: (error) => setActionError(error.message),
   });
@@ -312,6 +343,7 @@ export default function ChatPage() {
       onData: () => {
         void utils.chat.messages.invalidate();
         void utils.chat.directThreads.invalidate();
+        void utils.chat.callHistory.invalidate();
         void utils.chat.unreadCount.invalidate();
         void utils.notification.unread.invalidate();
         if (messageSearch.trim().length > 1) {
@@ -372,6 +404,7 @@ export default function ChatPage() {
       handleIncomingOffer(String(event.senderId), meta);
       void utils.chat.messages.invalidate();
       void utils.chat.directThreads.invalidate();
+      void utils.chat.callHistory.invalidate();
       void utils.notification.unread.invalidate();
     },
   });
@@ -389,6 +422,26 @@ export default function ChatPage() {
     return directThreads?.find((thread) => String(thread.user?.id) === String(directRecipientId)) || null;
   }, [directRecipientId, directThreads]);
   const canCallCurrentDirectUser = Boolean(currentDirectThread?.isFriend);
+  const currentDirectUserOnline = currentDirectUser?.status === "online";
+  const notificationPermission =
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported";
+  const turnRelayConfigured = Boolean(turnServerUrl);
+  const recentCallHistory = useMemo(() => {
+    return (callHistory || []).map((entry) => {
+      const call = entry.call;
+      const isCaller = String(call.callerId) === String(user?.id);
+      const otherId = isCaller ? String(call.receiverId) : String(call.callerId);
+      const threadUser = directThreads?.find((thread) => String(thread.user?.id) === otherId)?.user;
+      return {
+        id: call.id,
+        label: threadUser?.name || threadUser?.username || entry.caller?.name || entry.caller?.username || "Teammate",
+        direction: isCaller ? "Outgoing" : "Incoming",
+        mode: call.mode,
+        status: call.status,
+        createdAt: call.createdAt,
+      };
+    });
+  }, [callHistory, directThreads, user?.id]);
 
   const activeRoomRecord = useMemo(() => {
     if (directRecipientId || activeRoom === "global") return null;
@@ -565,12 +618,17 @@ export default function ChatPage() {
 
     const context = ringtoneContextRef.current || new AudioContextConstructor();
     ringtoneContextRef.current = context;
+    if (context.state === "suspended" && !callSoundsReady) {
+      setCallHealthMessage("Browser audio is waiting for a user click. Use Enable call alerts for reliable ringtone playback.");
+    }
     const frequencies = mode === "video" ? [660, 880] : [440, 660];
     let index = 0;
 
     const ring = () => {
       if (context.state === "suspended") {
-        void context.resume().catch(() => undefined);
+        void context.resume().catch(() => {
+          setCallHealthMessage("The browser blocked ringtone playback until the page receives a user gesture.");
+        });
       }
       const oscillator = context.createOscillator();
       const gain = context.createGain();
@@ -588,6 +646,25 @@ export default function ChatPage() {
 
     ring();
     ringtoneTimerRef.current = window.setInterval(ring, 1400);
+  }
+
+  async function enableCallAlerts() {
+    if (typeof window === "undefined") return;
+    const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextConstructor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
+    if (AudioContextConstructor) {
+      const context = ringtoneContextRef.current || new AudioContextConstructor();
+      ringtoneContextRef.current = context;
+      await context.resume().catch(() => undefined);
+      setCallSoundsReady(context.state === "running");
+    }
+
+    if ("Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setBrowserNotificationsEnabled(permission === "granted");
+    }
+
+    setCallHealthMessage("Call alerts checked. Keep this page open for browser popups, ringtone, and direct WebRTC signaling.");
   }
 
   function showIncomingCallNotification(mode: "voice" | "video", senderId: string) {
@@ -806,10 +883,22 @@ export default function ChatPage() {
         }
 
         if (meta.action === "reject" && activeCallIdRef.current === meta.callId) {
+          setActionError("Call declined.");
           await cleanupActiveCall(false);
         }
 
         if (meta.action === "end" && activeCallIdRef.current === meta.callId) {
+          setActionError("Call ended.");
+          await cleanupActiveCall(false);
+        }
+
+        if (meta.action === "missed" && activeCallIdRef.current === meta.callId) {
+          setActionError("Call missed.");
+          await cleanupActiveCall(false);
+        }
+
+        if (meta.action === "failed" && activeCallIdRef.current === meta.callId) {
+          setActionError(meta.note || "Call connection failed.");
           await cleanupActiveCall(false);
         }
       }
@@ -856,11 +945,12 @@ export default function ChatPage() {
       peerConnectionRef.current.close();
     }
 
+    setIceConnectionState("new");
+    setPeerConnectionState("new");
+    setCallHealthMessage(turnServerUrl ? "Using STUN plus configured TURN relay for this call." : "Using public STUN only. Some corporate or strict NAT networks may need TURN.");
+
     const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
+      iceServers: getCallIceServers(),
     });
 
     pc.onicecandidate = (event) => {
@@ -894,11 +984,38 @@ export default function ChatPage() {
     };
 
     pc.onconnectionstatechange = () => {
+      setPeerConnectionState(pc.connectionState);
       if (pc.connectionState === "connected") {
         setCallState("connected");
+        setCallHealthMessage("Peer connection established.");
       }
       if (["disconnected", "failed", "closed"].includes(pc.connectionState)) {
+        if (pc.connectionState === "failed" && directRecipientId) {
+          void sendWebRTCSignal("Call connection failed", {
+            kind: "call",
+            title: "Call connection failed",
+            action: "failed",
+            callId,
+            mode: callModeRef.current,
+            targetUserId: directRecipientId,
+            note: "WebRTC peer connection failed. TURN may be required for this network.",
+          });
+          setCallHealthMessage("WebRTC failed to connect. A TURN relay is probably needed for this network.");
+        }
         void cleanupActiveCall(false);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      setIceConnectionState(pc.iceConnectionState);
+      if (pc.iceConnectionState === "checking") {
+        setCallHealthMessage("Checking network path between both browsers...");
+      }
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        setCallHealthMessage("Media path is connected.");
+      }
+      if (pc.iceConnectionState === "failed") {
+        setCallHealthMessage("ICE failed. This usually means NAT/firewall traversal needs a TURN server.");
       }
     };
 
@@ -952,6 +1069,8 @@ export default function ChatPage() {
     setRecording(false);
     setCallState("idle");
     setRoomMediaMode("idle");
+    setIceConnectionState("new");
+    setPeerConnectionState("new");
     activeCallIdRef.current = null;
   }
 
@@ -1713,6 +1832,18 @@ export default function ChatPage() {
       await startRoomMedia(mode);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The browser blocked this call action.");
+      if (directRecipientId && activeCallIdRef.current) {
+        await sendWebRTCSignal("Call setup failed", {
+          kind: "call",
+          title: "Call setup failed",
+          action: "failed",
+          callId: activeCallIdRef.current,
+          mode: callModeRef.current,
+          targetUserId: directRecipientId,
+          note: error instanceof Error ? error.message : "Browser media permission was blocked.",
+        }).catch(() => undefined);
+      }
+      await cleanupActiveCall(false);
     }
   }
 
@@ -2832,6 +2963,32 @@ export default function ChatPage() {
                       ? `This thread is only between you and ${roomName}. You can make voice and video calls because you are friends.`
                       : "Accept the friend request first to unlock private messages, voice calls, and video calls."}
                   </div>
+                  <div className="mt-3 rounded-3xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-white">Call readiness</div>
+                        <div className="mt-1 text-xs leading-5 text-cyan-50/75">{callHealthMessage}</div>
+                      </div>
+                      <Button size="sm" className="rounded-full bg-cyan-500 text-slate-950 hover:bg-cyan-400" onClick={() => void enableCallAlerts()}>
+                        <Bell className="mr-2 h-4 w-4" />
+                        Enable call alerts
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <Badge variant="outline" className="justify-center border-white/10 py-1 text-cyan-100">
+                        {currentDirectUserOnline ? "Receiver online" : "Receiver may be offline"}
+                      </Badge>
+                      <Badge variant="outline" className="justify-center border-white/10 py-1 text-cyan-100">
+                        Notifications: {notificationPermission}
+                      </Badge>
+                      <Badge variant="outline" className="justify-center border-white/10 py-1 text-cyan-100">
+                        Ringtone: {callSoundsReady ? "ready" : "needs click"}
+                      </Badge>
+                      <Badge variant="outline" className="justify-center border-white/10 py-1 text-cyan-100">
+                        Relay: {turnRelayConfigured ? "TURN configured" : "STUN only"}
+                      </Badge>
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
                       className="bg-violet-500 text-white"
@@ -2886,6 +3043,16 @@ export default function ChatPage() {
                         {callMode}
                       </Badge>
                     </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">ICE</div>
+                        <div className="mt-1 text-sm font-semibold text-white">{iceConnectionState}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Peer</div>
+                        <div className="mt-1 text-sm font-semibold text-white">{peerConnectionState}</div>
+                      </div>
+                    </div>
 
                     {callState === "incoming" && incomingCall && (
                       <div className="mt-3 flex gap-2">
@@ -2895,6 +3062,23 @@ export default function ChatPage() {
                         <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={() => void rejectIncomingCall()}>
                           Decline
                         </Button>
+                      </div>
+                    )}
+
+                    {recentCallHistory.length > 0 && (
+                      <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="mb-2 text-xs font-semibold text-white">Recent call history</div>
+                        <div className="space-y-2">
+                          {recentCallHistory.slice(0, 4).map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-3 text-xs">
+                              <div className="min-w-0">
+                                <div className="truncate text-slate-200">{item.direction} {item.mode} with {item.label}</div>
+                                <div className="text-slate-600">{new Date(item.createdAt).toLocaleString()}</div>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 border-white/10 text-slate-300">{item.status}</Badge>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 

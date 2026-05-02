@@ -114,6 +114,25 @@ const coreTableSql = [
     KEY messages_receiver_id_idx (receiver_id),
     KEY messages_room_id_idx (room_id)
   )`,
+  `CREATE TABLE IF NOT EXISTS chat_calls (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    call_id VARCHAR(128) NOT NULL,
+    caller_id VARCHAR(255) NOT NULL,
+    receiver_id VARCHAR(255) NOT NULL,
+    mode ENUM('voice', 'video') NOT NULL DEFAULT 'voice',
+    status ENUM('ringing', 'accepted', 'rejected', 'missed', 'ended', 'failed') NOT NULL DEFAULT 'ringing',
+    offer_message_id INT DEFAULT NULL,
+    answered_at TIMESTAMP NULL DEFAULT NULL,
+    ended_at TIMESTAMP NULL DEFAULT NULL,
+    last_signal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    failure_reason TEXT DEFAULT NULL,
+    metadata TEXT DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY chat_calls_call_id_unique (call_id),
+    KEY chat_calls_caller_id_idx (caller_id),
+    KEY chat_calls_receiver_id_idx (receiver_id),
+    KEY chat_calls_status_idx (status)
+  )`,
   `CREATE TABLE IF NOT EXISTS project_collaborators (
     id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     project_id INT NOT NULL,

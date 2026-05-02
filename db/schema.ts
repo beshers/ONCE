@@ -260,6 +260,33 @@ export const messages = mysqlTable(
   }),
 );
 
+export const chatCalls = mysqlTable(
+  "chat_calls",
+  {
+    id: serial("id").primaryKey(),
+    callId: varchar("call_id", { length: 128 }).notNull(),
+    callerId: varchar("caller_id", { length: 255 }).notNull(),
+    receiverId: varchar("receiver_id", { length: 255 }).notNull(),
+    mode: mysqlEnum("mode", ["voice", "video"]).default("voice").notNull(),
+    status: mysqlEnum("status", ["ringing", "accepted", "rejected", "missed", "ended", "failed"])
+      .default("ringing")
+      .notNull(),
+    offerMessageId: int("offer_message_id"),
+    answeredAt: timestamp("answered_at"),
+    endedAt: timestamp("ended_at"),
+    lastSignalAt: timestamp("last_signal_at").defaultNow().notNull(),
+    failureReason: text("failure_reason"),
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    callIdIdx: uniqueIndex("chat_calls_call_id_unique").on(table.callId),
+    callerIdx: index("chat_calls_caller_id_idx").on(table.callerId),
+    receiverIdx: index("chat_calls_receiver_id_idx").on(table.receiverId),
+    statusIdx: index("chat_calls_status_idx").on(table.status),
+  }),
+);
+
 export const chatRooms = mysqlTable("chat_rooms", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
