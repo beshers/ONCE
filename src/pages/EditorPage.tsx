@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState, useEffect, useRef, type ReactElement } from "react";
+import { lazy, Suspense, useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
-import { trpc } from "@/providers/trpc";
+import { trpc } from "@/lib/trpcClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,8 +38,8 @@ export default function EditorPage() {
   const projectId = id ? parseInt(id) : undefined;
 
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
-  const [code, setCode] = useState("");
-  const [originalCode, setOriginalCode] = useState("");
+  const [draftsByFileId, setDraftsByFileId] = useState<Record<number, string>>({});
+  const [savedCodeByFileId, setSavedCodeByFileId] = useState<Record<number, string>>({});
   const [activeTab, setActiveTab] = useState("editor");
   const [newFileName, setNewFileName] = useState("");
   const [newFileLang, setNewFileLang] = useState("plaintext");
@@ -55,7 +55,6 @@ export default function EditorPage() {
   const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
   const [challengeMinutes, setChallengeMinutes] = useState("30");
   const [snippetDraft, setSnippetDraft] = useState("");
-  const loadedFileIdRef = useRef<number | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -95,12 +94,17 @@ export default function EditorPage() {
       refetchInterval: 5000,
     }
   );
+  const { data: allProjects } = trpc.project.list.useQuery(undefined, {
+    enabled: !projectId,
+  });
   const heartbeat = trpc.project.heartbeat.useMutation();
 
   const saveFile = trpc.project.fileUpdate.useMutation({
     onSuccess: () => {
       toast.success("File saved!");
-      setOriginalCode(code);
+      if (activeFileId) {
+        setSavedCodeByFileId((current) => ({ ...current, [activeFileId]: code }));
+      }
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: activeFileId! });
     },
@@ -135,8 +139,19 @@ export default function EditorPage() {
     onSuccess: () => {
       toast.success("File deleted!");
       utils.project.fileList.invalidate({ projectId: projectId! });
+      if (activeFileId) {
+        setDraftsByFileId((current) => {
+          const next = { ...current };
+          delete next[activeFileId];
+          return next;
+        });
+        setSavedCodeByFileId((current) => {
+          const next = { ...current };
+          delete next[activeFileId];
+          return next;
+        });
+      }
       setActiveFileId(null);
-      setCode("");
     },
   });
 
@@ -148,7 +163,33 @@ export default function EditorPage() {
     },
   });
 
+  const restoreVersion = trpc.project.restoreVersion.useMutation({
+    onSuccess: () => {
+      toast.success("Version restored!");
+      if (activeFileId) {
+        setDraftsByFileId((current) => {
+          const next = { ...current };
+          delete next[activeFileId];
+          return next;
+        });
+        setSavedCodeByFileId((current) => {
+          const next = { ...current };
+          delete next[activeFileId];
+          return next;
+        });
+      }
+      utils.project.fileList.invalidate({ projectId: projectId! });
+      utils.project.versions.invalidate({ fileId: activeFileId! });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Could not restore this version.");
+    },
+  });
+
   const activeFile = files?.find((f) => f.id === activeFileId);
+  const serverCode = activeFile?.content || "";
+  const originalCode = activeFileId ? savedCodeByFileId[activeFileId] ?? serverCode : "";
+  const code = activeFileId ? draftsByFileId[activeFileId] ?? originalCode : "";
   const isModified = code !== originalCode;
   const folders = (files || []).filter((item) => item.type === "folder");
   const liveUsers = liveState?.users || [];
@@ -159,23 +200,10 @@ export default function EditorPage() {
     ? code
     : `<!doctype html><html><head><style>${activeFile?.language === "css" ? code : ""}</style></head><body><div id="app"></div><script>${activeFile?.language === "javascript" ? code : ""}</script></body></html>`;
 
-  useEffect(() => {
-    if (!activeFile) {
-      loadedFileIdRef.current = null;
-      setCode("");
-      setOriginalCode("");
-      return;
-    }
-
-    const nextContent = activeFile.content || "";
-    const switchedFiles = loadedFileIdRef.current !== activeFile.id;
-
-    if (switchedFiles || !isModified) {
-      loadedFileIdRef.current = activeFile.id;
-      setCode(nextContent);
-      setOriginalCode(nextContent);
-    }
-  }, [activeFile?.id, activeFile?.content, isModified]);
+  const setCode = (nextCode: string) => {
+    if (!activeFileId) return;
+    setDraftsByFileId((current) => ({ ...current, [activeFileId]: nextCode }));
+  };
 
   useEffect(() => {
     if (!projectId || !project?.collaborationMode || project.collaborationMode === "solo") return;
@@ -425,7 +453,6 @@ export default function EditorPage() {
 
   if (!projectId) {
     // Show project selector when no project ID
-    const { data: allProjects } = trpc.project.list.useQuery();
     const ownedProjects = allProjects?.owned || [];
     return (
       <div className="mx-auto max-w-7xl space-y-6">
@@ -1018,13 +1045,7 @@ export default function EditorPage() {
                       className="text-cyan-400 hover:text-cyan-300"
                       onClick={() => {
                         if (confirm("Restore this version? Current content will be overwritten.")) {
-                          trpc.project.restoreVersion.useMutation({
-                            onSuccess: () => {
-                              toast.success("Version restored!");
-                              utils.project.fileList.invalidate({ projectId: projectId! });
-                              utils.project.versions.invalidate({ fileId: activeFileId! });
-                            },
-                          }).mutate({ versionId: v.id });
+                          restoreVersion.mutate({ versionId: v.id });
                         }
                       }}
                     >

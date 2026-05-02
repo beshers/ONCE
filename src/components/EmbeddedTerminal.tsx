@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { trpc } from "@/providers/trpc";
+import { trpc } from "@/lib/trpcClient";
 
 type ShellType = "powershell" | "cmd" | "bash" | "sh";
 

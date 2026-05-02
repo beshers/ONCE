@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { trpc } from "@/providers/trpc";
+import { trpc } from "@/lib/trpcClient";
 import {
   Home, FolderOpen, Code2, Terminal, MessageSquare,
   FileCode2, Users, Bell, Settings, LogOut, Search,

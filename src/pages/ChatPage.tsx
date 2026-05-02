@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { enableWebSockets, trpc } from "@/providers/trpc";
+import { enableWebSockets, trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
