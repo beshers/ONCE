@@ -426,6 +426,24 @@ export default function ChatPage() {
   const notificationPermission =
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported";
   const turnRelayConfigured = Boolean(turnServerUrl);
+  const roomStatusLabel = directRecipientId
+    ? currentDirectUserOnline
+      ? "Online now"
+      : `Last status: ${currentDirectUser?.status || "offline"}`
+    : roomMediaMode !== "idle"
+      ? `${roomMediaMode === "screen" ? "Screen share" : roomMediaMode} room live`
+      : activeRoom === "global"
+        ? "Open team room"
+        : activeRoomSettings?.settings?.hasPermanentCall
+          ? "Permanent room ready"
+          : "On-demand room";
+  const activeCallLabel = directRecipientId
+    ? callState === "idle"
+      ? "No active direct call"
+      : `${callMode} call ${callState}`
+    : roomMediaMode === "idle"
+      ? "No room call running"
+      : `${roomMediaMode} session live`;
   const recentCallHistory = useMemo(() => {
     return (callHistory || []).map((entry) => {
       const call = entry.call;
@@ -564,6 +582,11 @@ export default function ChatPage() {
       );
     });
   }, [streamEntries, transcriptSearch]);
+  const latestMessageLabel = useMemo(() => {
+    const latest = streamEntries[streamEntries.length - 1];
+    if (!latest) return "No messages yet";
+    return new Date(latest.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }, [streamEntries]);
 
   const latestMinutes = useMemo(() => {
     return [...enrichedMessages].reverse().find((entry) => entry.meta?.kind === "minutes");
@@ -2057,7 +2080,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1540px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#101624_0%,#070a10_42%,#05070b_100%)] p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
+    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1600px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#0f1724_0%,#070a10_38%,#05070b_100%)] p-2 text-slate-100 lg:h-[calc(100vh-92px)] lg:flex-row lg:gap-0 lg:p-0">
       {callState === "incoming" && incomingCall && (
         <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
           <div className="flex items-start gap-3">
@@ -2085,17 +2108,17 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:h-full lg:w-80 lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
-        <div className="border-b border-white/10 bg-white/[0.025] px-4 py-4">
+      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:h-full lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
+        <div className="border-b border-white/10 bg-[#0f1622] px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">X-style Spaces</div>
-              <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-white">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">OCNE collaboration</div>
+              <div className="mt-1 flex items-center gap-2 text-base font-semibold text-white">
                 <MessageSquare className="h-4 w-4 text-cyan-400" />
                 Chat
               </div>
             </div>
-            <Badge className="border-0 bg-emerald-500/15 text-emerald-300">
+            <Badge className="border-0 bg-emerald-500/15 px-2.5 py-1 text-emerald-300">
               <Wifi className="mr-1 h-3 w-3" />
               Live
             </Badge>
@@ -2118,7 +2141,7 @@ export default function ChatPage() {
 
         <ScrollArea className="max-h-[460px] lg:h-[calc(100%-196px)] lg:max-h-none">
           <div className="space-y-5 p-3">
-            <div className="space-y-3 rounded-3xl border border-cyan-500/15 bg-[#101722] p-3 shadow-lg shadow-black/20">
+            <div className="space-y-3 rounded-2xl border border-cyan-500/15 bg-[#101722] p-3 shadow-lg shadow-black/20">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-semibold text-white">Create room</div>
@@ -2217,7 +2240,7 @@ export default function ChatPage() {
               <div className="mt-2 space-y-1.5">
                 <button
                   onClick={() => openRoom("global")}
-                  className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
+                  className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
                     activeRoom === "global"
                       ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
                       : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
@@ -2236,7 +2259,7 @@ export default function ChatPage() {
                   <button
                     key={room.id}
                     onClick={() => openRoom(String(room.id))}
-                    className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
+                    className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
                       activeRoom === String(room.id)
                         ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
                         : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
@@ -2269,7 +2292,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 {(publicRooms || []).map((room) => (
-                  <div key={room.id} className="rounded-3xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-sm shadow-black/20">
+                  <div key={room.id} className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 shadow-sm shadow-black/20">
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-300">
                         <Radio className="h-4 w-4" />
@@ -2318,7 +2341,7 @@ export default function ChatPage() {
                     <button
                       key={thread.id}
                       onClick={() => openDirectMessage(thread.id)}
-                      className={`flex w-full items-center gap-3 rounded-full border px-3 py-3 text-left transition-all ${
+                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
                         active
                           ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
                           : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
@@ -2357,7 +2380,7 @@ export default function ChatPage() {
               </div>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
+            <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
               <div className="flex items-center justify-between">
                 <div className="text-xs font-semibold text-white">Alerts</div>
                 <Bell className="h-4 w-4 text-amber-300" />
@@ -2375,7 +2398,7 @@ export default function ChatPage() {
               </Button>
             </div>
 
-            <div className="space-y-2 rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
+            <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-sm shadow-black/20">
               <div className="text-xs font-semibold text-white">Breakout rooms</div>
               <Input
                 value={breakoutName}
@@ -2423,7 +2446,7 @@ export default function ChatPage() {
 
       <div className="min-w-0 flex-1 lg:h-full">
         <Card className="min-h-full gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#080b12] p-0 shadow-2xl shadow-black/30 lg:h-full lg:rounded-none lg:border-y-0 lg:border-r-0">
-          <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/95 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
+          <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/96 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Avatar className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12">
@@ -2527,6 +2550,25 @@ export default function ChatPage() {
               )}
             </div>
 
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Status</div>
+                <div className="mt-1 truncate text-sm font-semibold text-white">{roomStatusLabel}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">People</div>
+                <div className="mt-1 text-sm font-semibold text-white">{participants.length} active</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Call</div>
+                <div className="mt-1 truncate text-sm font-semibold text-white">{activeCallLabel}</div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Latest message</div>
+                <div className="mt-1 truncate text-sm font-semibold text-white">{latestMessageLabel}</div>
+              </div>
+            </div>
+
             {!directRecipientId && (
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 2xl:grid-cols-6">
                 <Badge variant="outline" className="justify-center rounded-full border-white/10 bg-white/[0.04] py-1.5 text-slate-300">{recording ? "Recording on" : "Recording off"}</Badge>
@@ -2545,9 +2587,9 @@ export default function ChatPage() {
           </div>
 
           <div className="grid gap-0 2xl:grid-cols-[minmax(0,1fr)_390px]">
-            <div className="space-y-4 border-t border-white/10 bg-[#080b12] p-3 sm:p-4 lg:border-l 2xl:border-t-0">
-              <div className="grid gap-4 2xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="rounded-3xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4 2xl:rounded-2xl">
+            <div className="flex flex-col gap-4 border-t border-white/10 bg-[#080b12] p-3 sm:p-4 lg:border-l 2xl:border-t-0">
+              <div className="order-2 grid gap-4 2xl:grid-cols-[0.95fr_1.05fr]">
+                <div className="rounded-2xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Meeting controls</div>
@@ -2582,7 +2624,7 @@ export default function ChatPage() {
                     </Button>
                   </div>
                   {roomMediaMode !== "idle" && (
-                    <div className="mt-4 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] shadow-lg shadow-black/20">
+                    <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-lg shadow-black/20">
                       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
                         <div>
                           <div className="text-xs font-semibold text-white">
@@ -2633,7 +2675,7 @@ export default function ChatPage() {
                     </a>
                   )}
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Bandwidth mode</div>
                       <div className="grid grid-cols-1 gap-2">
                         {["adaptive", "quality", "bandwidth"].map((mode) => (
@@ -2650,7 +2692,7 @@ export default function ChatPage() {
                         ))}
                       </div>
                     </div>
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="mb-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Call background</div>
                       <div className="grid grid-cols-1 gap-2">
                         {["Nebula IDE", "Terminal Dark", "Graph Paper"].map((bg) => (
@@ -2672,7 +2714,7 @@ export default function ChatPage() {
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4 2xl:rounded-2xl">
+                <div className="rounded-2xl border border-white/10 bg-[#0d121b] p-3 shadow-lg shadow-black/20 sm:p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-semibold text-white">Live transcript</div>
@@ -2721,19 +2763,19 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              <div className="overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17] shadow-xl shadow-black/25">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-white/[0.025] px-3 py-3 sm:px-4">
+              <div className="order-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0f17] shadow-xl shadow-black/25">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101722] px-3 py-3 sm:px-4">
                   <div>
-                    <div className="text-sm font-semibold text-white">Room stream</div>
+                    <div className="text-sm font-semibold text-white">{directRecipientId ? "Private conversation" : "Room conversation"}</div>
                     <div className="text-[11px] text-slate-500">
-                      Chat, snippets, polls, guest links, annotations, and call events all live here.
+                      Messages, files, call notes, polls, and code context stay together here.
                     </div>
                   </div>
                   <Badge variant="outline" className="border-white/10 text-slate-300">
                     {participants.length} active
                   </Badge>
                 </div>
-                <ScrollArea className="h-[55vh] min-h-[360px] bg-[#080b12] px-3 py-4 sm:px-4 lg:h-[520px]">
+                <ScrollArea className="h-[58vh] min-h-[380px] bg-[#080b12] px-3 py-4 sm:px-4 lg:h-[560px]">
                   <div className="space-y-4">
                     {messageSearch.trim().length > 1 && (
                       <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] px-4 py-3 text-xs text-cyan-100">
@@ -2767,9 +2809,9 @@ export default function ChatPage() {
                               {isSpeaker && <Badge className="border-0 bg-emerald-500/15 text-[10px] text-emerald-300">Speaker</Badge>}
                               <span>{new Date(entry.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             </div>
-                            <div className={`rounded-3xl border px-4 py-3 text-sm leading-relaxed shadow-md ${
+                            <div className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-md ${
                               isMe
-                                ? "border-cyan-400/30 bg-cyan-500 text-slate-950 shadow-cyan-500/10"
+                                ? "border-cyan-400/30 bg-cyan-400 text-slate-950 shadow-cyan-500/10"
                                 : "border-white/10 bg-[#111827] text-slate-100 shadow-black/20"
                             }`}>
                               <div className="whitespace-pre-wrap break-words">{entry.message.content}</div>
@@ -2828,12 +2870,18 @@ export default function ChatPage() {
                       event.target.value = "";
                     }}
                   />
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-inner shadow-black/20">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-inner shadow-black/20 focus-within:border-cyan-400/40">
+                    <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                      <span className="text-xs font-semibold text-slate-300">Write a message</span>
+                      <span className="text-[10px] uppercase tracking-[0.14em] text-slate-600">
+                        {directRecipientId ? "Private" : "Room"}
+                      </span>
+                    </div>
                     <Textarea
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
                       placeholder={directRecipientId ? `Message ${roomName}...` : "Message the room, paste code, share context, or post a call update..."}
-                      className="min-h-[96px] resize-none border-0 bg-transparent text-white placeholder:text-slate-600 focus-visible:ring-0"
+                      className="min-h-[88px] resize-none border-0 bg-transparent text-white placeholder:text-slate-600 focus-visible:ring-0"
                     />
                   </div>
                   <div className="mt-3 grid gap-3 sm:flex sm:items-center sm:justify-between">
@@ -2864,7 +2912,7 @@ export default function ChatPage() {
                         </Button>
                       ))}
                     </div>
-                    <Button onClick={handleSend} disabled={!messageText.trim() || sendMessage.isPending} className="rounded-full bg-white text-black hover:bg-slate-200">
+                    <Button onClick={handleSend} disabled={!messageText.trim() || sendMessage.isPending} className="min-h-10 rounded-full bg-cyan-400 px-5 text-slate-950 hover:bg-cyan-300">
                       <Send className="mr-2 h-4 w-4" />
                       {isUploadingAttachment ? "Uploading..." : "Send"}
                     </Button>
@@ -2887,7 +2935,7 @@ export default function ChatPage() {
                     <Settings2 className="h-4 w-4 text-cyan-400" />
                   </div>
                   <div className="mt-3 grid gap-3">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-3">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="outline" className="border-white/10 text-slate-300">
                           {activeRoomSettings?.settings?.isPrivate ? "Private" : "Open to members"}
@@ -2958,12 +3006,12 @@ export default function ChatPage() {
                     <div className="text-sm font-semibold text-white">Private chat tools</div>
                     <Users className="h-4 w-4 text-violet-300" />
                   </div>
-                  <div className="mt-3 rounded-3xl border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-400">
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-400">
                     {canCallCurrentDirectUser
                       ? `This thread is only between you and ${roomName}. You can make voice and video calls because you are friends.`
                       : "Accept the friend request first to unlock private messages, voice calls, and video calls."}
                   </div>
-                  <div className="mt-3 rounded-3xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3">
+                  <div className="mt-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-white">Call readiness</div>
