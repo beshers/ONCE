@@ -14,6 +14,7 @@ import {
   Code2,
   FileCode2,
   Globe,
+  Headphones,
   Image,
   Link2,
   Lock,
@@ -23,12 +24,15 @@ import {
   MonitorUp,
   Phone,
   PhoneOff,
+  Pause,
   PictureInPicture2,
   Play,
   Plus,
   Paperclip,
   Radio,
+  RefreshCw,
   ScanSearch,
+  Search,
   ScreenShare,
   Send,
   Settings2,
@@ -37,6 +41,7 @@ import {
   UserPlus,
   Users,
   Video,
+  Volume2,
   WandSparkles,
   Wifi,
 } from "lucide-react";
@@ -89,6 +94,7 @@ type EventMeta = {
   signalData?: RTCSessionDescriptionInit | RTCIceCandidateInit | null;
   muted?: boolean;
   cameraOff?: boolean;
+  held?: boolean;
   fileUrl?: string;
   fileName?: string;
   fileSize?: number;
@@ -101,6 +107,29 @@ type IncomingCall = {
   mode: "voice" | "video";
   fromUserId: string;
   offer: RTCSessionDescriptionInit;
+};
+
+type MediaDeviceChoice = {
+  deviceId: string;
+  label: string;
+  kind: MediaDeviceKind;
+};
+
+type CallQualityLevel = "unknown" | "good" | "fair" | "poor";
+
+type CallStats = {
+  quality: CallQualityLevel;
+  rttMs: number | null;
+  packetLossPct: number | null;
+  audioBitrateKbps: number | null;
+  videoBitrateKbps: number | null;
+  updatedAt: number | null;
+};
+
+type StatsSample = {
+  timestamp: number;
+  audioBytesSent: number;
+  videoBytesSent: number;
 };
 
 function parseMeta(raw?: string | null): EventMeta | null {
@@ -183,6 +212,7 @@ export default function ChatPage() {
   const [messageSearch, setMessageSearch] = useState("");
   const [inviteUserId, setInviteUserId] = useState("");
   const [callTargetId, setCallTargetId] = useState("");
+  const [callUserSearch, setCallUserSearch] = useState("");
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [recording, setRecording] = useState(false);
   const [noiseCancel, setNoiseCancel] = useState(true);
@@ -222,8 +252,23 @@ export default function ChatPage() {
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
+  const [isCallOnHold, setIsCallOnHold] = useState(false);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [typingLabel, setTypingLabel] = useState<string | null>(null);
+  const [mediaDevices, setMediaDevices] = useState<MediaDeviceChoice[]>([]);
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState("");
+  const [selectedVideoInputId, setSelectedVideoInputId] = useState("");
+  const [selectedAudioOutputId, setSelectedAudioOutputId] = useState("");
+  const [isTestingDevices, setIsTestingDevices] = useState(false);
+  const [callPermission, setCallPermission] = useState<"everyone" | "friends" | "nobody">("everyone");
+  const [callStats, setCallStats] = useState<CallStats>({
+    quality: "unknown",
+    rttMs: null,
+    packetLossPct: null,
+    audioBitrateKbps: null,
+    videoBitrateKbps: null,
+    updatedAt: null,
+  });
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -248,10 +293,11 @@ export default function ChatPage() {
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const outgoingCallPeerRef = useRef<string | null>(null);
   const iceRestartAttemptsRef = useRef(0);
+  const lastStatsSampleRef = useRef<StatsSample | null>(null);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
-  const [remoteMediaState, setRemoteMediaState] = useState({ muted: false, cameraOff: false });
+  const [remoteMediaState, setRemoteMediaState] = useState({ muted: false, cameraOff: false, held: false });
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>("new");
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>("new");
   const [callHealthMessage, setCallHealthMessage] = useState("Calls are ready when both users are online and browser permissions are allowed.");
@@ -317,6 +363,10 @@ export default function ChatPage() {
   const { data: inviteSearchResults } = trpc.user.search.useQuery(
     { query: inviteSearch },
     { enabled: inviteSearch.trim().length > 0 },
+  );
+  const { data: callSearchResults } = trpc.user.search.useQuery(
+    { query: callUserSearch },
+    { enabled: callUserSearch.trim().length > 0 },
   );
 
   const sendMessage = trpc.chat.send.useMutation({
@@ -554,6 +604,34 @@ export default function ChatPage() {
     return [...map.values()].slice(0, 10);
   }, [inviteSearchResults, onlineUsers, user?.id]);
 
+  const callSearchCandidates = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof onlineUsers>[number]>();
+    for (const candidate of onlineUsers || []) {
+      if (String(candidate.id) !== String(user?.id)) {
+        map.set(String(candidate.id), candidate);
+      }
+    }
+    for (const candidate of callSearchResults || []) {
+      if (String(candidate.id) !== String(user?.id)) {
+        map.set(String(candidate.id), candidate);
+      }
+    }
+    return [...map.values()].slice(0, 8);
+  }, [callSearchResults, onlineUsers, user?.id]);
+
+  const audioInputDevices = useMemo(
+    () => mediaDevices.filter((device) => device.kind === "audioinput"),
+    [mediaDevices],
+  );
+  const videoInputDevices = useMemo(
+    () => mediaDevices.filter((device) => device.kind === "videoinput"),
+    [mediaDevices],
+  );
+  const audioOutputDevices = useMemo(
+    () => mediaDevices.filter((device) => device.kind === "audiooutput"),
+    [mediaDevices],
+  );
+
   const selectedInvitees = useMemo(() => {
     return selectedInviteIds
       .map((id) => inviteCandidates.find((candidate) => String(candidate.id) === id))
@@ -738,8 +816,36 @@ export default function ChatPage() {
     return incomingCallId.localeCompare(activeCallIdRef.current) < 0;
   }
 
+  function canReceiveCallFrom(senderId: string) {
+    if (callPermission === "everyone") return true;
+    if (callPermission === "nobody") return false;
+    return Boolean(
+      directThreads?.some(
+        (thread) => String(thread.user?.id) === String(senderId) && Boolean(thread.isFriend),
+      ),
+    );
+  }
+
   async function handleIncomingOffer(senderId: string, meta: EventMeta) {
     if (!meta.callId || !meta.signalData || !meta.mode) return;
+    if (!canReceiveCallFrom(senderId)) {
+      await sendMessage.mutateAsync({
+        content: "Call blocked by receiver settings",
+        receiverId: senderId,
+        messageType: "text",
+        metadata: JSON.stringify({
+          kind: "call",
+          title: "Call blocked",
+          action: "reject",
+          callId: meta.callId,
+          mode: meta.mode === "video" ? "video" : "voice",
+          targetUserId: senderId,
+          note: "The receiver is not accepting calls from this sender.",
+        } satisfies EventMeta),
+      }).catch(() => undefined);
+      setActionError("Incoming call blocked by your call permission setting.");
+      return;
+    }
     if (callState !== "idle") {
       if (!shouldAcceptCollidingOffer(senderId, meta.callId)) {
         await sendMessage.mutateAsync({
@@ -823,6 +929,27 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !user?.id) return;
+    const saved = window.localStorage.getItem(`ocne-call-permission-${user.id}`);
+    if (saved === "everyone" || saved === "friends" || saved === "nobody") {
+      setCallPermission(saved);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user?.id) return;
+    window.localStorage.setItem(`ocne-call-permission-${user.id}`, callPermission);
+  }, [callPermission, user?.id]);
+
+  useEffect(() => {
+    void loadMediaDevices();
+    if (!navigator.mediaDevices?.addEventListener) return;
+    const refresh = () => void loadMediaDevices();
+    navigator.mediaDevices.addEventListener("devicechange", refresh);
+    return () => navigator.mediaDevices.removeEventListener("devicechange", refresh);
+  }, []);
+
+  useEffect(() => {
     return () => {
       stopRingtone();
       if (missedCallTimerRef.current) {
@@ -885,6 +1012,24 @@ export default function ChatPage() {
   // sendWebRTCSignal is intentionally excluded because it is a local helper around the current direct recipient.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directRecipientId]);
+
+  useEffect(() => {
+    void applyAudioOutputSink(remoteVideoRef.current);
+  // applyAudioOutputSink depends on selectedAudioOutputId only for this effect.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAudioOutputId]);
+
+  useEffect(() => {
+    if (callState !== "connecting" && callState !== "connected") {
+      lastStatsSampleRef.current = null;
+      return;
+    }
+    void updateCallStats();
+    const timer = window.setInterval(() => {
+      void updateCallStats();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [callState]);
 
   useEffect(() => {
     if (!user?.id || (callState !== "idle" && callState !== "outgoing")) return;
@@ -1039,6 +1184,7 @@ export default function ChatPage() {
           setRemoteMediaState({
             muted: Boolean(meta.muted),
             cameraOff: Boolean(meta.cameraOff),
+            held: Boolean(meta.held),
           });
         }
 
@@ -1067,9 +1213,66 @@ export default function ChatPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directRecipientId, enrichedMessages, user?.id]);
 
+  async function loadMediaDevices() {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const counts: Record<string, number> = {};
+      const choices = devices.map((device) => {
+        counts[device.kind] = (counts[device.kind] || 0) + 1;
+        const fallback =
+          device.kind === "audioinput"
+            ? `Microphone ${counts[device.kind]}`
+            : device.kind === "videoinput"
+              ? `Camera ${counts[device.kind]}`
+              : `Speaker ${counts[device.kind]}`;
+        return {
+          deviceId: device.deviceId,
+          kind: device.kind,
+          label: device.label || fallback,
+        };
+      });
+      setMediaDevices(choices);
+      setSelectedAudioInputId((current) => current || choices.find((device) => device.kind === "audioinput")?.deviceId || "");
+      setSelectedVideoInputId((current) => current || choices.find((device) => device.kind === "videoinput")?.deviceId || "");
+      setSelectedAudioOutputId((current) => current || choices.find((device) => device.kind === "audiooutput")?.deviceId || "");
+    } catch {
+      setCallHealthMessage("Media device list is unavailable until the browser grants microphone or camera permission.");
+    }
+  }
+
+  function getAudioConstraints(): MediaTrackConstraints | boolean {
+    const constraints: MediaTrackConstraints = noiseCancel
+      ? {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      : {};
+    if (selectedAudioInputId) {
+      constraints.deviceId = { exact: selectedAudioInputId };
+    }
+    return Object.keys(constraints).length ? constraints : true;
+  }
+
+  function getVideoConstraints(mode: "voice" | "video"): MediaTrackConstraints | boolean {
+    if (mode !== "video") return false;
+    return selectedVideoInputId ? { deviceId: { exact: selectedVideoInputId } } : true;
+  }
+
+  async function applyAudioOutputSink(video: HTMLVideoElement | null) {
+    if (!video || !selectedAudioOutputId) return;
+    const withSink = video as HTMLVideoElement & { setSinkId?: (sinkId: string) => Promise<void> };
+    if (!withSink.setSinkId) return;
+    await withSink.setSinkId(selectedAudioOutputId).catch(() => {
+      setActionError("This browser could not switch the call speaker output.");
+    });
+  }
+
   function attachStreamToVideo(video: HTMLVideoElement | null, stream: MediaStream) {
     if (!video) return;
     video.srcObject = stream;
+    void applyAudioOutputSink(video);
     void video.play().catch(() => {
       setCallHealthMessage("Browser autoplay blocked the call preview. Click the video area to resume playback.");
     });
@@ -1096,6 +1299,12 @@ export default function ChatPage() {
       throw new Error("Your browser does not allow microphone or camera access on this page.");
     }
 
+    if (isTestingDevices) {
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+      setIsTestingDevices(false);
+    }
+
     if (
       localStreamRef.current &&
       localStreamRef.current.getAudioTracks().length > 0 &&
@@ -1105,21 +1314,71 @@ export default function ChatPage() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: noiseCancel
-        ? {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          }
-        : true,
-      video: mode === "video",
+      audio: getAudioConstraints(),
+      video: getVideoConstraints(mode),
     });
     localStreamRef.current = stream;
     attachStreamToVideo(localVideoRef.current, stream);
     setHasLocalStream(true);
     setIsMuted(false);
     setIsCameraOff(mode === "voice");
+    await loadMediaDevices();
     return stream;
+  }
+
+  async function updateCallStats() {
+    const pc = peerConnectionRef.current;
+    if (!pc) return;
+
+    const report = await pc.getStats();
+    let rttMs: number | null = null;
+    let packetsLost = 0;
+    let packetsTotal = 0;
+    let audioBytesSent = 0;
+    let videoBytesSent = 0;
+
+    report.forEach((entry) => {
+      const stat = entry as RTCStats & Record<string, unknown>;
+      if (stat.type === "candidate-pair" && stat.state === "succeeded" && stat.currentRoundTripTime) {
+        rttMs = Math.round(Number(stat.currentRoundTripTime) * 1000);
+      }
+      if ((stat.type === "inbound-rtp" || stat.type === "outbound-rtp") && !stat.isRemote) {
+        const lost = Number(stat.packetsLost || 0);
+        const received = Number(stat.packetsReceived || stat.packetsSent || 0);
+        packetsLost += Math.max(0, lost);
+        packetsTotal += Math.max(0, lost + received);
+        if (stat.type === "outbound-rtp" && stat.kind === "audio") {
+          audioBytesSent += Number(stat.bytesSent || 0);
+        }
+        if (stat.type === "outbound-rtp" && stat.kind === "video") {
+          videoBytesSent += Number(stat.bytesSent || 0);
+        }
+      }
+    });
+
+    const now = Date.now();
+    const previous = lastStatsSampleRef.current;
+    const seconds = previous ? Math.max(1, (now - previous.timestamp) / 1000) : null;
+    const audioBitrateKbps =
+      previous && seconds
+        ? Math.max(0, Math.round(((audioBytesSent - previous.audioBytesSent) * 8) / seconds / 1000))
+        : null;
+    const videoBitrateKbps =
+      previous && seconds
+        ? Math.max(0, Math.round(((videoBytesSent - previous.videoBytesSent) * 8) / seconds / 1000))
+        : null;
+    const packetLossPct = packetsTotal > 0 ? Number(((packetsLost / packetsTotal) * 100).toFixed(1)) : null;
+    const quality: CallQualityLevel =
+      (rttMs !== null && rttMs > 350) || (packetLossPct !== null && packetLossPct > 8)
+        ? "poor"
+        : (rttMs !== null && rttMs > 150) || (packetLossPct !== null && packetLossPct > 3)
+          ? "fair"
+          : rttMs !== null || packetLossPct !== null || audioBitrateKbps !== null || videoBitrateKbps !== null
+            ? "good"
+            : "unknown";
+
+    lastStatsSampleRef.current = { timestamp: now, audioBytesSent, videoBytesSent };
+    setCallStats({ quality, rttMs, packetLossPct, audioBitrateKbps, videoBitrateKbps, updatedAt: now });
   }
 
   async function attemptIceRestart(pc: RTCPeerConnection, callId: string) {
@@ -1315,7 +1574,16 @@ export default function ChatPage() {
       setIsSharingScreen(false);
       setIsMuted(false);
       setIsCameraOff(false);
-      setRemoteMediaState({ muted: false, cameraOff: false });
+      setIsCallOnHold(false);
+      setRemoteMediaState({ muted: false, cameraOff: false, held: false });
+      setCallStats({
+        quality: "unknown",
+        rttMs: null,
+        packetLossPct: null,
+        audioBitrateKbps: null,
+        videoBitrateKbps: null,
+        updatedAt: null,
+      });
       setRecording(false);
       setCallState("idle");
       setRoomMediaMode("idle");
@@ -1357,6 +1625,7 @@ export default function ChatPage() {
     setCallMode(mode);
     callModeRef.current = mode;
     setCallState("outgoing");
+    setIsCallOnHold(false);
 
     const stream = await ensureLocalStream(mode);
     const pc = createPeerConnection(callId);
@@ -1396,6 +1665,7 @@ export default function ChatPage() {
       setCallMode(incomingCall.mode);
       callModeRef.current = incomingCall.mode;
       setCallState("connecting");
+      setIsCallOnHold(false);
 
       const stream = await ensureLocalStream(incomingCall.mode);
       const pc = createPeerConnection(incomingCall.callId);
@@ -1445,6 +1715,71 @@ export default function ChatPage() {
     setCallState("idle");
   }
 
+  async function rejectIncomingCallWithMessage() {
+    await rejectIncomingCall();
+    setMessageText("I cannot talk right now. I will message you here.");
+    setActionError("Call declined. A quick reply is ready in the composer.");
+  }
+
+  async function handleTestDevices(mode: "voice" | "video") {
+    if (callState !== "idle" || roomMediaMode !== "idle") {
+      setActionError("End the active call before running a pre-call device test.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setActionError("This browser cannot access microphone or camera devices on this page.");
+      return;
+    }
+    try {
+      setIsTestingDevices(true);
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: getAudioConstraints(),
+        video: getVideoConstraints(mode),
+      });
+      localStreamRef.current = stream;
+      attachStreamToVideo(localVideoRef.current, stream);
+      setHasLocalStream(true);
+      setIsCameraOff(mode === "voice");
+      await loadMediaDevices();
+      setActionError(mode === "video" ? "Camera and microphone test is live." : "Microphone test is live.");
+    } catch (error) {
+      setIsTestingDevices(false);
+      setActionError(error instanceof Error ? error.message : "Device test failed.");
+    }
+  }
+
+  function stopDeviceTest() {
+    if (!isTestingDevices || callState !== "idle") return;
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    setHasLocalStream(false);
+    setIsTestingDevices(false);
+    setActionError("Pre-call device test stopped.");
+  }
+
+  function testRingtone() {
+    playRingtone("voice");
+    window.setTimeout(stopRingtone, 3200);
+    setActionError("Ringtone test playing.");
+  }
+
+  async function handleReconnectCall() {
+    if (!directRecipientId) return;
+    const pc = peerConnectionRef.current;
+    const callId = activeCallIdRef.current;
+    if (pc && callId) {
+      await attemptIceRestart(pc, callId);
+      return;
+    }
+    if (callState === "idle") {
+      await startDirectCall(callMode, directRecipientId);
+    }
+  }
+
   function toggleMute() {
     const nextMuted = !isMuted;
     localStreamRef.current?.getAudioTracks().forEach((track) => {
@@ -1461,6 +1796,7 @@ export default function ChatPage() {
         targetUserId: directRecipientId,
         muted: nextMuted,
         cameraOff: isCameraOff,
+        held: isCallOnHold,
       });
     }
   }
@@ -1481,6 +1817,32 @@ export default function ChatPage() {
         targetUserId: directRecipientId,
         muted: isMuted,
         cameraOff: nextOff,
+        held: isCallOnHold,
+      });
+    }
+  }
+
+  function toggleHold() {
+    const nextHeld = !isCallOnHold;
+    localStreamRef.current?.getTracks().forEach((track) => {
+      track.enabled = !nextHeld;
+    });
+    setIsCallOnHold(nextHeld);
+    setIsMuted(nextHeld);
+    if (callMode === "video") {
+      setIsCameraOff(nextHeld);
+    }
+    if (directRecipientId && activeCallIdRef.current) {
+      void sendWebRTCSignal(".", {
+        kind: "call",
+        title: "Media state changed",
+        action: "media-state",
+        callId: activeCallIdRef.current,
+        mode: callModeRef.current,
+        targetUserId: directRecipientId,
+        muted: nextHeld,
+        cameraOff: callMode === "video" ? nextHeld : isCameraOff,
+        held: nextHeld,
       });
     }
   }
@@ -1772,6 +2134,7 @@ export default function ChatPage() {
   function openDirectMessage(userId: string) {
     setActiveRoom("global");
     setDirectRecipientId(userId);
+    setCallTargetId(userId);
     setMessageSearch("");
   }
 
@@ -1790,6 +2153,17 @@ export default function ChatPage() {
       await startDirectCall(mode, targetUserId);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The call could not be started for that user ID.");
+      await cleanupActiveCall(false);
+    }
+  }
+
+  async function startCallFromSearch(userId: string, mode: "voice" | "video") {
+    setCallTargetId(userId);
+    setCallUserSearch("");
+    try {
+      await startDirectCall(mode, userId);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The call could not be started for that user.");
       await cleanupActiveCall(false);
     }
   }
@@ -2361,17 +2735,21 @@ export default function ChatPage() {
       {callState === "incoming" && incomingCall && (
         <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
           <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-950">
-              {incomingCall.mode === "video" ? <Video className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
-            </div>
+            <Avatar className="h-12 w-12 shrink-0 border border-amber-400/30">
+              <AvatarImage src={currentDirectUser?.avatar || undefined} />
+              <AvatarFallback className="bg-amber-400 text-slate-950">
+                {incomingCallerName.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-white">
-                Incoming {incomingCall.mode} call
+              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
+                {incomingCall.mode === "video" ? <Video className="h-4 w-4 text-amber-300" /> : <Phone className="h-4 w-4 text-amber-300" />}
+                Incoming {incomingCall.mode} call from {incomingCallerName}
               </div>
-              <div className="mt-1 truncate text-xs text-slate-400">
-                {incomingCallerName} is calling you. The ringtone will stop when you answer or decline.
+              <div className="mt-1 text-xs leading-5 text-slate-400">
+                Caller ID {incomingCall.fromUserId}. The ringtone will stop when you answer, decline, or send a quick reply.
               </div>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
                 <Button className="bg-emerald-500 text-slate-950 hover:bg-emerald-400" onClick={() => void acceptIncomingCall()}>
                   <Phone className="mr-2 h-4 w-4" />
                   Answer
@@ -2379,6 +2757,10 @@ export default function ChatPage() {
                 <Button variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCall()}>
                   <PhoneOff className="mr-2 h-4 w-4" />
                   Decline
+                </Button>
+                <Button variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCallWithMessage()}>
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Message
                 </Button>
               </div>
             </div>
@@ -2607,6 +2989,48 @@ export default function ChatPage() {
                 className="mt-2 h-11 rounded-full border-white/10 bg-white/[0.04] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
               <div className="mt-2 rounded-2xl border border-violet-500/15 bg-violet-500/[0.06] p-2">
+                <div className="flex items-center gap-2 px-1 pb-2 text-[11px] font-medium text-violet-100">
+                  <Search className="h-3.5 w-3.5" />
+                  Call a user
+                </div>
+                <Input
+                  value={callUserSearch}
+                  onChange={(e) => setCallUserSearch(e.target.value)}
+                  placeholder="Search by name or username"
+                  className="mb-2 h-10 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-violet-500/40"
+                />
+                {callUserSearch.trim().length > 0 && (
+                  <div className="mb-2 max-h-44 space-y-1 overflow-auto rounded-2xl border border-white/10 bg-[#070a10] p-1">
+                    {callSearchCandidates.length === 0 && (
+                      <div className="px-2 py-2 text-xs text-slate-500">No callable users found.</div>
+                    )}
+                    {callSearchCandidates.map((candidate) => {
+                      const id = String(candidate.id);
+                      return (
+                        <div key={id} className="rounded-xl px-2 py-2 text-xs text-slate-300 hover:bg-white/5">
+                          <button
+                            type="button"
+                            className="mb-2 flex w-full items-center justify-between gap-2 text-left"
+                            onClick={() => openDirectMessage(id)}
+                          >
+                            <span className="min-w-0 truncate">{candidate.name || candidate.username || id}</span>
+                            <span className="shrink-0 text-[10px] uppercase tracking-[0.12em] text-slate-500">{candidate.status || "user"}</span>
+                          </button>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button size="sm" className="h-8 rounded-full bg-violet-500 text-white hover:bg-violet-400" onClick={() => void startCallFromSearch(id, "voice")} disabled={callState !== "idle"}>
+                              <Phone className="mr-1.5 h-3.5 w-3.5" />
+                              Voice
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 rounded-full border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void startCallFromSearch(id, "video")} disabled={callState !== "idle"}>
+                              <Video className="mr-1.5 h-3.5 w-3.5" />
+                              Video
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <Input
                   value={callTargetId}
                   onChange={(e) => setCallTargetId(e.target.value)}
@@ -3306,6 +3730,30 @@ export default function ChatPage() {
                 </Card>
               )}
 
+              {!directRecipientId && (
+                <Card className="rounded-3xl border-emerald-500/20 bg-[#07140f] p-4 shadow-lg shadow-black/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Group call engine</div>
+                      <div className="text-[11px] text-slate-500">
+                        Room voice/video is ready for an SFU provider; one-to-one calls stay peer-to-peer.
+                      </div>
+                    </div>
+                    <Radio className="h-4 w-4 text-emerald-300" />
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {["LiveKit", "Mediasoup", "Daily", "100ms"].map((provider) => (
+                      <Badge key={provider} variant="outline" className="justify-center border-emerald-500/20 py-1.5 text-emerald-100">
+                        {provider} compatible
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs leading-5 text-emerald-50/80">
+                    Add an SFU token endpoint plus room join/leave signaling to replace the current room placeholder with real multi-party media.
+                  </div>
+                </Card>
+              )}
+
               {directRecipientId && (
                 <Card className="rounded-3xl border-white/10 bg-[#0d121b] p-4 shadow-lg shadow-black/20">
                   <div className="flex items-center justify-between">
@@ -3342,6 +3790,78 @@ export default function ChatPage() {
                         Relay: {turnRelayConfigured ? "TURN configured" : "STUN only"}
                       </Badge>
                     </div>
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-white">
+                        <Headphones className="h-4 w-4 text-cyan-300" />
+                        Devices and permissions
+                      </div>
+                      <div className="grid gap-2">
+                        <select
+                          value={selectedAudioInputId}
+                          onChange={(event) => setSelectedAudioInputId(event.target.value)}
+                          className="h-10 rounded-full border border-white/10 bg-[#070a10] px-3 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                        >
+                          <option value="">Default microphone</option>
+                          {audioInputDevices.map((device) => (
+                            <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={selectedVideoInputId}
+                          onChange={(event) => setSelectedVideoInputId(event.target.value)}
+                          className="h-10 rounded-full border border-white/10 bg-[#070a10] px-3 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                        >
+                          <option value="">Default camera</option>
+                          {videoInputDevices.map((device) => (
+                            <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={selectedAudioOutputId}
+                          onChange={(event) => setSelectedAudioOutputId(event.target.value)}
+                          className="h-10 rounded-full border border-white/10 bg-[#070a10] px-3 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                        >
+                          <option value="">Default speaker</option>
+                          {audioOutputDevices.map((device) => (
+                            <option key={device.deviceId} value={device.deviceId}>{device.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={callPermission}
+                          onChange={(event) => setCallPermission(event.target.value as "everyone" | "friends" | "nobody")}
+                          className="h-10 rounded-full border border-white/10 bg-[#070a10] px-3 text-xs text-slate-100 outline-none focus:border-cyan-500/50"
+                        >
+                          <option value="everyone">Accept calls from everyone</option>
+                          <option value="friends">Only accepted friends can call</option>
+                          <option value="nobody">Do not disturb</option>
+                        </select>
+                      </div>
+                      {!turnRelayConfigured && (
+                        <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+                          For more reliable calls on strict networks, set VITE_TURN_URL, VITE_TURN_USERNAME, and VITE_TURN_CREDENTIAL.
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-cyan-100 hover:bg-white/10" onClick={() => void handleTestDevices("voice")}>
+                        <Mic className="mr-2 h-4 w-4" />
+                        Test mic
+                      </Button>
+                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-cyan-100 hover:bg-white/10" onClick={() => void handleTestDevices("video")}>
+                        <Video className="mr-2 h-4 w-4" />
+                        Test camera
+                      </Button>
+                      <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-cyan-100 hover:bg-white/10" onClick={testRingtone}>
+                        <Volume2 className="mr-2 h-4 w-4" />
+                        Ring
+                      </Button>
+                      {isTestingDevices && (
+                        <Button size="sm" variant="ghost" className="rounded-full border border-red-500/20 text-red-200 hover:bg-red-500/10 sm:col-span-3" onClick={stopDeviceTest}>
+                          <PhoneOff className="mr-2 h-4 w-4" />
+                          Stop device test
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button
@@ -3362,14 +3882,32 @@ export default function ChatPage() {
                       Video call
                     </Button>
                     {(callState === "connected" || callState === "connecting" || callState === "outgoing") && (
-                      <Button
-                        variant="ghost"
-                        className="border border-white/10 text-slate-200"
-                        onClick={() => void cleanupActiveCall(true)}
-                      >
-                        <PhoneOff className="mr-2 h-4 w-4" />
-                        Hang up
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          className="border border-white/10 text-slate-200"
+                          onClick={() => void handleReconnectCall()}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Reconnect
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="border border-white/10 text-slate-200"
+                          onClick={toggleHold}
+                        >
+                          <Pause className="mr-2 h-4 w-4" />
+                          {isCallOnHold ? "Resume" : "Hold"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="border border-white/10 text-slate-200"
+                          onClick={() => void cleanupActiveCall(true)}
+                        >
+                          <PhoneOff className="mr-2 h-4 w-4" />
+                          Hang up
+                        </Button>
+                      </>
                     )}
                   </div>
 
@@ -3407,6 +3945,34 @@ export default function ChatPage() {
                         <div className="mt-1 text-sm font-semibold text-white">{peerConnectionState}</div>
                       </div>
                     </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Quality</div>
+                        <div className={`mt-1 text-sm font-semibold ${
+                          callStats.quality === "good"
+                            ? "text-emerald-300"
+                            : callStats.quality === "fair"
+                              ? "text-amber-200"
+                              : callStats.quality === "poor"
+                                ? "text-red-200"
+                                : "text-white"
+                        }`}>
+                          {callStats.quality}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">RTT / loss</div>
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          {callStats.rttMs ?? "--"} ms / {callStats.packetLossPct ?? "--"}%
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Send bitrate</div>
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          A {callStats.audioBitrateKbps ?? "--"} / V {callStats.videoBitrateKbps ?? "--"} kbps
+                        </div>
+                      </div>
+                    </div>
 
                     {callState === "incoming" && incomingCall && (
                       <div className="mt-3 flex gap-2">
@@ -3415,6 +3981,9 @@ export default function ChatPage() {
                         </Button>
                         <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={() => void rejectIncomingCall()}>
                           Decline
+                        </Button>
+                        <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={() => void rejectIncomingCallWithMessage()}>
+                          Message
                         </Button>
                       </div>
                     )}
@@ -3455,7 +4024,7 @@ export default function ChatPage() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span>{roomName}</span>
                             <span className="text-[10px] text-slate-500">
-                              {remoteMediaState.muted ? "Muted" : "Mic on"} / {remoteMediaState.cameraOff ? "Camera off" : "Camera on"}
+                              {remoteMediaState.held ? "On hold" : `${remoteMediaState.muted ? "Muted" : "Mic on"} / ${remoteMediaState.cameraOff ? "Camera off" : "Camera on"}`}
                             </span>
                           </div>
                         </div>
@@ -3493,6 +4062,14 @@ export default function ChatPage() {
                         >
                           <ScreenShare className="mr-2 h-4 w-4" />
                           {isSharingScreen ? "Stop share" : "Share screen"}
+                        </Button>
+                        <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={toggleHold}>
+                          <Pause className="mr-2 h-4 w-4" />
+                          {isCallOnHold ? "Resume" : "Hold"}
+                        </Button>
+                        <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={() => void handleReconnectCall()}>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Reconnect
                         </Button>
                       </div>
                     )}
