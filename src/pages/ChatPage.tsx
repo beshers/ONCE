@@ -255,6 +255,8 @@ export default function ChatPage() {
   const [isCallOnHold, setIsCallOnHold] = useState(false);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [typingLabel, setTypingLabel] = useState<string | null>(null);
+  const [localVideoNeedsGesture, setLocalVideoNeedsGesture] = useState(false);
+  const [remoteVideoNeedsGesture, setRemoteVideoNeedsGesture] = useState(false);
   const [mediaDevices, setMediaDevices] = useState<MediaDeviceChoice[]>([]);
   const [selectedAudioInputId, setSelectedAudioInputId] = useState("");
   const [selectedVideoInputId, setSelectedVideoInputId] = useState("");
@@ -294,6 +296,9 @@ export default function ChatPage() {
   const outgoingCallPeerRef = useRef<string | null>(null);
   const iceRestartAttemptsRef = useRef(0);
   const lastStatsSampleRef = useRef<StatsSample | null>(null);
+  const lastRemoteHeartbeatRef = useRef<number | null>(null);
+  const deviceTestTimerRef = useRef<number | null>(null);
+  const sessionRestoreAttemptedRef = useRef(false);
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
@@ -952,6 +957,9 @@ export default function ChatPage() {
   useEffect(() => {
     return () => {
       stopRingtone();
+      if (deviceTestTimerRef.current) {
+        window.clearTimeout(deviceTestTimerRef.current);
+      }
       if (missedCallTimerRef.current) {
         window.clearTimeout(missedCallTimerRef.current);
       }
@@ -970,12 +978,27 @@ export default function ChatPage() {
   }, [browserNotificationsEnabled, notificationUnread]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !user?.id || sessionRestoreAttemptedRef.current) return;
     const savedCall = window.sessionStorage.getItem(activeCallSessionKey);
     if (!savedCall) return;
+    sessionRestoreAttemptedRef.current = true;
     window.sessionStorage.removeItem(activeCallSessionKey);
+    try {
+      const saved = JSON.parse(savedCall) as { peerId?: string; mode?: "voice" | "video"; savedAt?: number };
+      if (saved.peerId && (saved.mode === "voice" || saved.mode === "video") && (!saved.savedAt || Date.now() - saved.savedAt < 120_000)) {
+        setActionError("Restoring the interrupted direct call with a fresh peer connection...");
+        void startDirectCall(saved.mode, saved.peerId).catch((error) => {
+          setActionError(error instanceof Error ? error.message : "The previous direct call could not be restored.");
+        });
+        return;
+      }
+    } catch {
+      // Ignore malformed session recovery data and fall through to the user-facing message.
+    }
     setActionError("The previous direct call was interrupted by a page reload. Start the call again to create a fresh peer connection.");
-  }, []);
+  // startDirectCall intentionally stays out of deps; this runs once after auth is known.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1010,6 +1033,23 @@ export default function ChatPage() {
     }, 15000);
     return () => window.clearInterval(timer);
   // sendWebRTCSignal is intentionally excluded because it is a local helper around the current direct recipient.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState, directRecipientId]);
+
+  useEffect(() => {
+    if (!directRecipientId || callState !== "connected") {
+      lastRemoteHeartbeatRef.current = null;
+      return;
+    }
+    lastRemoteHeartbeatRef.current = Date.now();
+    const timer = window.setInterval(() => {
+      const lastSeenAt = lastRemoteHeartbeatRef.current;
+      if (!lastSeenAt || Date.now() - lastSeenAt <= 45_000) return;
+      setActionError("Remote call heartbeat timed out. Ending the call so both sides can reconnect cleanly.");
+      void cleanupActiveCall(false);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  // cleanupActiveCall intentionally stays out of deps because it is a local async teardown helper.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directRecipientId]);
 
@@ -1128,6 +1168,7 @@ export default function ChatPage() {
         if (!meta?.action || !meta.callId) continue;
         if (String(entry.message.senderId) === String(user?.id)) continue;
         if (meta.targetUserId && String(meta.targetUserId) !== String(user?.id)) continue;
+        lastRemoteHeartbeatRef.current = Date.now();
 
         if (
           meta.action === "offer" &&
@@ -1186,6 +1227,10 @@ export default function ChatPage() {
             cameraOff: Boolean(meta.cameraOff),
             held: Boolean(meta.held),
           });
+        }
+
+        if (meta.action === "call-heartbeat" && activeCallIdRef.current === meta.callId) {
+          continue;
         }
 
         if (meta.action === "reject" && activeCallIdRef.current === meta.callId) {
@@ -1263,9 +1308,13 @@ export default function ChatPage() {
   async function applyAudioOutputSink(video: HTMLVideoElement | null) {
     if (!video || !selectedAudioOutputId) return;
     const withSink = video as HTMLVideoElement & { setSinkId?: (sinkId: string) => Promise<void> };
-    if (!withSink.setSinkId) return;
+    if (!withSink.setSinkId) {
+      setCallHealthMessage("Speaker output selection is not supported in this browser.");
+      return;
+    }
     await withSink.setSinkId(selectedAudioOutputId).catch(() => {
-      setActionError("This browser could not switch the call speaker output.");
+      setActionError("Speaker change failed. Refresh devices or use the browser/system audio picker.");
+      setCallHealthMessage("Speaker change failed. Refresh devices or use the browser/system audio picker.");
     });
   }
 
@@ -1273,9 +1322,55 @@ export default function ChatPage() {
     if (!video) return;
     video.srcObject = stream;
     void applyAudioOutputSink(video);
-    void video.play().catch(() => {
+    void video.play().then(() => {
+      if (video === localVideoRef.current) {
+        setLocalVideoNeedsGesture(false);
+      }
+      if (video === remoteVideoRef.current) {
+        setRemoteVideoNeedsGesture(false);
+      }
+    }).catch(() => {
+      if (video === localVideoRef.current) {
+        setLocalVideoNeedsGesture(true);
+      }
+      if (video === remoteVideoRef.current) {
+        setRemoteVideoNeedsGesture(true);
+      }
       setCallHealthMessage("Browser autoplay blocked the call preview. Click the video area to resume playback.");
     });
+  }
+
+  function resumeVideoPlayback(video: HTMLVideoElement | null) {
+    if (!video) return;
+    void video.play().then(() => {
+      if (video === localVideoRef.current) {
+        setLocalVideoNeedsGesture(false);
+      }
+      if (video === remoteVideoRef.current) {
+        setRemoteVideoNeedsGesture(false);
+      }
+      setCallHealthMessage("Video playback resumed.");
+    }).catch(() => {
+      setCallHealthMessage("The browser still needs a user gesture before it can play this video.");
+    });
+  }
+
+  function forceStopDeviceTest(nextMessage?: string) {
+    if (deviceTestTimerRef.current) {
+      window.clearTimeout(deviceTestTimerRef.current);
+      deviceTestTimerRef.current = null;
+    }
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    setHasLocalStream(false);
+    setIsTestingDevices(false);
+    setLocalVideoNeedsGesture(false);
+    if (nextMessage) {
+      setActionError(nextMessage);
+    }
   }
 
   async function flushPendingIceCandidates(pc: RTCPeerConnection | null | undefined) {
@@ -1300,9 +1395,7 @@ export default function ChatPage() {
     }
 
     if (isTestingDevices) {
-      localStreamRef.current?.getTracks().forEach((track) => track.stop());
-      localStreamRef.current = null;
-      setIsTestingDevices(false);
+      forceStopDeviceTest();
     }
 
     if (
@@ -1472,6 +1565,7 @@ export default function ChatPage() {
       setPeerConnectionState(pc.connectionState);
       if (pc.connectionState === "connected") {
         setCallState("connected");
+        lastRemoteHeartbeatRef.current = Date.now();
         setCallHealthMessage("Peer connection established.");
       }
       if (pc.connectionState === "disconnected") {
@@ -1575,6 +1669,8 @@ export default function ChatPage() {
       setIsMuted(false);
       setIsCameraOff(false);
       setIsCallOnHold(false);
+      setLocalVideoNeedsGesture(false);
+      setRemoteVideoNeedsGesture(false);
       setRemoteMediaState({ muted: false, cameraOff: false, held: false });
       setCallStats({
         quality: "unknown",
@@ -1591,6 +1687,7 @@ export default function ChatPage() {
       setPeerConnectionState("new");
       outgoingCallPeerRef.current = null;
       iceRestartAttemptsRef.current = 0;
+      lastRemoteHeartbeatRef.current = null;
       if (activeCallIdRef.current === cleanupCallId) {
         activeCallIdRef.current = null;
       }
@@ -1626,6 +1723,7 @@ export default function ChatPage() {
     callModeRef.current = mode;
     setCallState("outgoing");
     setIsCallOnHold(false);
+    lastRemoteHeartbeatRef.current = null;
 
     const stream = await ensureLocalStream(mode);
     const pc = createPeerConnection(callId);
@@ -1666,6 +1764,7 @@ export default function ChatPage() {
       callModeRef.current = incomingCall.mode;
       setCallState("connecting");
       setIsCallOnHold(false);
+      lastRemoteHeartbeatRef.current = Date.now();
 
       const stream = await ensureLocalStream(incomingCall.mode);
       const pc = createPeerConnection(incomingCall.callId);
@@ -1732,6 +1831,10 @@ export default function ChatPage() {
     }
     try {
       setIsTestingDevices(true);
+      if (deviceTestTimerRef.current) {
+        window.clearTimeout(deviceTestTimerRef.current);
+        deviceTestTimerRef.current = null;
+      }
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: getAudioConstraints(),
@@ -1743,6 +1846,9 @@ export default function ChatPage() {
       setIsCameraOff(mode === "voice");
       await loadMediaDevices();
       setActionError(mode === "video" ? "Camera and microphone test is live." : "Microphone test is live.");
+      deviceTestTimerRef.current = window.setTimeout(() => {
+        forceStopDeviceTest("Pre-call device test stopped automatically.");
+      }, 30_000);
     } catch (error) {
       setIsTestingDevices(false);
       setActionError(error instanceof Error ? error.message : "Device test failed.");
@@ -1751,14 +1857,7 @@ export default function ChatPage() {
 
   function stopDeviceTest() {
     if (!isTestingDevices || callState !== "idle") return;
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-    setHasLocalStream(false);
-    setIsTestingDevices(false);
-    setActionError("Pre-call device test stopped.");
+    forceStopDeviceTest("Pre-call device test stopped.");
   }
 
   function testRingtone() {
@@ -3219,13 +3318,26 @@ export default function ChatPage() {
 
               {!directRecipientId ? (
                 <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap">
-                  <Button size="sm" className="rounded-full bg-white text-black hover:bg-slate-200" onClick={() => handleStartCall("voice")}>
+                  <Button
+                    size="sm"
+                    className="rounded-full bg-white text-black hover:bg-slate-200 disabled:opacity-55"
+                    onClick={() => handleStartCall("voice")}
+                    disabled
+                    title="Room voice needs an SFU provider before it can carry multi-party media."
+                  >
                     <Phone className="mr-2 h-4 w-4" />
-                    {roomMediaMode === "voice" ? "Voice On" : "Voice"}
+                    SFU voice
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("video")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06] disabled:opacity-55"
+                    onClick={() => handleStartCall("video")}
+                    disabled
+                    title="Room video needs an SFU provider before it can carry multi-party media."
+                  >
                     <Video className="mr-2 h-4 w-4" />
-                    {roomMediaMode === "video" ? "Video On" : "Video"}
+                    SFU video
                   </Button>
                   <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("screen")}>
                     <ScreenShare className="mr-2 h-4 w-4" />
@@ -3375,6 +3487,15 @@ export default function ChatPage() {
                       ) : (
                         <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
                           <video ref={localVideoRef} autoPlay muted playsInline className={localVideoClassName} />
+                          {localVideoNeedsGesture && (
+                            <button
+                              type="button"
+                              onClick={() => resumeVideoPlayback(localVideoRef.current)}
+                              className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
+                            >
+                              Click to resume preview
+                            </button>
+                          )}
                         </div>
                       )}
                       <div className="flex flex-wrap gap-2 border-t border-white/10 p-3">
@@ -4017,6 +4138,15 @@ export default function ChatPage() {
                               Local media preview
                             </div>
                           )}
+                          {localVideoNeedsGesture && (
+                            <button
+                              type="button"
+                              onClick={() => resumeVideoPlayback(localVideoRef.current)}
+                              className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
+                            >
+                              Click to resume preview
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
@@ -4030,10 +4160,26 @@ export default function ChatPage() {
                         </div>
                         <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
                           <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                          {(remoteMediaState.held || remoteMediaState.muted || remoteMediaState.cameraOff) && hasRemoteStream && (
+                            <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                              {remoteMediaState.held && <Badge className="border-0 bg-amber-500/20 text-amber-100">On hold</Badge>}
+                              {remoteMediaState.muted && <Badge className="border-0 bg-white/15 text-white">Muted</Badge>}
+                              {remoteMediaState.cameraOff && <Badge className="border-0 bg-white/15 text-white">Camera off</Badge>}
+                            </div>
+                          )}
                           {!hasRemoteStream && (
                             <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
                               Waiting for remote media
                             </div>
+                          )}
+                          {remoteVideoNeedsGesture && (
+                            <button
+                              type="button"
+                              onClick={() => resumeVideoPlayback(remoteVideoRef.current)}
+                              className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
+                            >
+                              Click to resume remote video
+                            </button>
                           )}
                         </div>
                       </div>
