@@ -182,6 +182,7 @@ export default function ChatPage() {
   const [threadSearch, setThreadSearch] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
   const [inviteUserId, setInviteUserId] = useState("");
+  const [callTargetId, setCallTargetId] = useState("");
   const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState(false);
   const [recording, setRecording] = useState(false);
   const [noiseCancel, setNoiseCancel] = useState(true);
@@ -449,6 +450,7 @@ export default function ChatPage() {
     return directThreads?.find((thread) => String(thread.user?.id) === String(directRecipientId)) || null;
   }, [directRecipientId, directThreads]);
   const canCallCurrentDirectUser = Boolean(currentDirectThread?.isFriend);
+  const canCallDirectTarget = Boolean(directRecipientId && String(directRecipientId) !== String(user?.id));
   const currentDirectUserOnline = currentDirectUser?.status === "online";
   const notificationPermission =
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported";
@@ -1335,10 +1337,11 @@ export default function ChatPage() {
     await cleanupPromiseRef.current;
   }
 
-  async function startDirectCall(mode: "voice" | "video") {
-    if (!directRecipientId) return;
-    if (!canCallCurrentDirectUser) {
-      setActionError("You can start voice and video calls only after the friend request is accepted.");
+  async function startDirectCall(mode: "voice" | "video", recipientId = directRecipientId) {
+    const targetUserId = recipientId?.trim();
+    if (!targetUserId) return;
+    if (String(targetUserId) === String(user?.id)) {
+      setActionError("You cannot call yourself.");
       return;
     }
     if (cleanupPromiseRef.current) {
@@ -1347,7 +1350,10 @@ export default function ChatPage() {
     setActionError(null);
     const callId = crypto.randomUUID();
     activeCallIdRef.current = callId;
-    outgoingCallPeerRef.current = directRecipientId;
+    outgoingCallPeerRef.current = targetUserId;
+    setActiveRoom("global");
+    setDirectRecipientId(targetUserId);
+    setMessageSearch("");
     setCallMode(mode);
     callModeRef.current = mode;
     setCallState("outgoing");
@@ -1367,9 +1373,10 @@ export default function ChatPage() {
         action: "offer",
         callId,
         mode,
-        targetUserId: directRecipientId,
+        targetUserId,
         signalData: offer,
       },
+      targetUserId,
     );
   }
 
@@ -1651,11 +1658,12 @@ export default function ChatPage() {
     setActionError(null);
   }
 
-  async function sendWebRTCSignal(content: string, meta: EventMeta) {
-    if (!directRecipientId) return;
+  async function sendWebRTCSignal(content: string, meta: EventMeta, overrideReceiverId?: string) {
+    const receiverId = overrideReceiverId || directRecipientId;
+    if (!receiverId) return;
     await sendMessage.mutateAsync({
       content,
-      receiverId: directRecipientId,
+      receiverId,
       messageType: "text",
       metadata: JSON.stringify(meta),
     });
@@ -1770,6 +1778,20 @@ export default function ChatPage() {
   function openRoom(roomId: string) {
     setDirectRecipientId(null);
     setActiveRoom(roomId);
+  }
+
+  async function startCallByUserId(mode: "voice" | "video") {
+    const targetUserId = callTargetId.trim();
+    if (!targetUserId) {
+      setActionError("Enter the user ID you want to call.");
+      return;
+    }
+    try {
+      await startDirectCall(mode, targetUserId);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The call could not be started for that user ID.");
+      await cleanupActiveCall(false);
+    }
   }
 
   async function handleJoinPublicRoom(roomId: number) {
@@ -2584,6 +2606,35 @@ export default function ChatPage() {
                 placeholder="Search people or message preview..."
                 className="mt-2 h-11 rounded-full border-white/10 bg-white/[0.04] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
               />
+              <div className="mt-2 rounded-2xl border border-violet-500/15 bg-violet-500/[0.06] p-2">
+                <Input
+                  value={callTargetId}
+                  onChange={(e) => setCallTargetId(e.target.value)}
+                  placeholder="Paste user ID to call"
+                  className="h-10 rounded-full border-white/10 bg-[#070a10] text-white placeholder:text-slate-600 focus-visible:ring-violet-500/40"
+                />
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    className="rounded-full bg-violet-500 text-white hover:bg-violet-400"
+                    onClick={() => void startCallByUserId("voice")}
+                    disabled={!callTargetId.trim() || callState !== "idle"}
+                  >
+                    <Phone className="mr-1.5 h-3.5 w-3.5" />
+                    Voice
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10"
+                    onClick={() => void startCallByUserId("video")}
+                    disabled={!callTargetId.trim() || callState !== "idle"}
+                  >
+                    <Video className="mr-1.5 h-3.5 w-3.5" />
+                    Video
+                  </Button>
+                </div>
+              </div>
               <div className="mt-2 space-y-1.5">
                 {threadOptions.length === 0 && (
                   <div className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-3 text-xs text-slate-500">
@@ -2773,11 +2824,11 @@ export default function ChatPage() {
                 </div>
               ) : (
                 <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap">
-                  <Button size="sm" className="rounded-full bg-white text-black hover:bg-slate-200" onClick={() => handleStartCall("voice")} disabled={!canCallCurrentDirectUser}>
+                  <Button size="sm" className="rounded-full bg-white text-black hover:bg-slate-200" onClick={() => handleStartCall("voice")} disabled={!canCallDirectTarget}>
                     <Phone className="mr-2 h-4 w-4" />
                     Call this person
                   </Button>
-                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("video")} disabled={!canCallCurrentDirectUser}>
+                  <Button size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]" onClick={() => handleStartCall("video")} disabled={!canCallDirectTarget}>
                     <Video className="mr-2 h-4 w-4" />
                     Video call
                   </Button>
@@ -3263,8 +3314,8 @@ export default function ChatPage() {
                   </div>
                   <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-400">
                     {canCallCurrentDirectUser
-                      ? `This thread is only between you and ${roomName}. You can make voice and video calls because you are friends.`
-                      : "Accept the friend request first to unlock private messages, voice calls, and video calls."}
+                      ? `This thread is only between you and ${roomName}. You can message and call because you are friends.`
+                      : "Calls can be sent directly to this user ID. Accept the friend request first to unlock normal private messages."}
                   </div>
                   <div className="mt-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.06] p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3296,7 +3347,7 @@ export default function ChatPage() {
                     <Button
                       className="bg-violet-500 text-white"
                       onClick={() => handleStartCall("voice")}
-                      disabled={!canCallCurrentDirectUser || callState !== "idle"}
+                      disabled={!canCallDirectTarget || callState !== "idle"}
                     >
                       <Phone className="mr-2 h-4 w-4" />
                       Voice call
@@ -3305,7 +3356,7 @@ export default function ChatPage() {
                       variant="ghost"
                       className="border border-white/10 text-slate-200"
                       onClick={() => handleStartCall("video")}
-                      disabled={!canCallCurrentDirectUser || callState !== "idle"}
+                      disabled={!canCallDirectTarget || callState !== "idle"}
                     >
                       <Video className="mr-2 h-4 w-4" />
                       Video call

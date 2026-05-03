@@ -173,6 +173,24 @@ async function ensureAcceptedFriendship(db: ReturnType<typeof getDb>, userId: st
   return friendship;
 }
 
+async function ensureCallRecipientExists(db: ReturnType<typeof getDb>, callerId: string, receiverId: string) {
+  if (String(callerId) === String(receiverId)) {
+    throw new Error("You cannot call yourself.");
+  }
+
+  const [receiver] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, receiverId))
+    .limit(1);
+
+  if (!receiver) {
+    throw new Error("No user was found for that call ID.");
+  }
+
+  return receiver;
+}
+
 async function createChatNotification(
   db: ReturnType<typeof getDb>,
   userId: string,
@@ -857,11 +875,16 @@ export const chatRouter = createRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      const { metadata, call } = getCallMetadata(input.metadata);
       if (input.roomId && input.roomId !== "global") {
         await ensureRoomAccess(db, Number(input.roomId), ctx.user.id);
       }
       if (input.receiverId) {
-        await ensureAcceptedFriendship(db, ctx.user.id, input.receiverId);
+        if (call) {
+          await ensureCallRecipientExists(db, ctx.user.id, input.receiverId);
+        } else {
+          await ensureAcceptedFriendship(db, ctx.user.id, input.receiverId);
+        }
       }
 
       const storedRoomId = input.receiverId ? null : input.roomId || "global";
@@ -898,7 +921,6 @@ export const chatRouter = createRouter({
       });
 
       if (input.receiverId && input.receiverId !== ctx.user.id) {
-        const { metadata, call } = getCallMetadata(input.metadata);
         const isCallOffer = call?.action === "offer";
         const isMissedCall = call?.action === "missed";
         await createChatNotification(
