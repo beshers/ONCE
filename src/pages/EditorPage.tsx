@@ -191,16 +191,20 @@ export default function EditorPage() {
 
   const saveFile = trpc.project.fileUpdate.useMutation({
     onSuccess: (_data, variables) => {
+      const currentLocalDraft = readStoredDraft(projectId, variables.id);
+      const hasNewerLocalDraft = currentLocalDraft !== null && currentLocalDraft !== variables.content;
       if (saveIntentRef.current === "manual") {
         toast.success("File saved!");
       }
       setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
-      setSaveStatus("saved");
+      setSaveStatus(hasNewerLocalDraft ? "unsaved" : "saved");
       setLastSavedAt(new Date());
       if (saveIntentRef.current === "manual") {
         setCommitMessage("");
       }
-      clearStoredDraft(projectId, variables.id);
+      if (!hasNewerLocalDraft) {
+        clearStoredDraft(projectId, variables.id);
+      }
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: variables.id });
     },
