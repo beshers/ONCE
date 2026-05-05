@@ -17,12 +17,15 @@ import { Card } from "@/components/ui/card";
 
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
 const WINDOWS_APP_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows.zip";
+const WINDOWS_APP_LITE_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows-Lite.zip";
 const MAC_APP_ARM64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Apple-Silicon.zip";
 const MAC_APP_X64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Intel.zip";
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
 const WINDOWS_APP_SHA256 =
-  "CB57D7D63C6C7B2F586613E0128BE25C8A39D10A41E23C1842E56EF83A5DD89E";
+  "7186E26FFC64426EB4931B6FE8B89159D685DCD3DDD6896C6B3BF0A78E9A16EF";
+const WINDOWS_APP_LITE_SHA256 =
+  "1571B9F82BB9A041520B5C93A66DE5F505F7EA9037035DD4670F5709CA892F27";
 const MAC_APP_ARM64_SHA256 =
   "702EEFC210984C92F4D02B6F4F71E348B62EC272B76B89C5EC0641CFC7E1D98C";
 const MAC_APP_X64_SHA256 =
@@ -30,12 +33,22 @@ const MAC_APP_X64_SHA256 =
 
 const downloads = [
   {
-    title: "OCNE Desktop App for Windows",
-    description: "Self-contained Avalonia/C# desktop app that opens OCNE inside a native Windows program window.",
+    title: "OCNE Desktop App for Windows Lite",
+    description: "Smaller Windows desktop app. Best choice if antivirus blocks the standalone ZIP. Requires Microsoft .NET 10 Desktop Runtime.",
+    href: WINDOWS_APP_LITE_DOWNLOAD,
+    fileType: "ZIP",
+    meta: "Windows app, .NET required",
+    badge: "Safer choice",
+    icon: HardDriveDownload,
+    checksum: WINDOWS_APP_LITE_SHA256,
+  },
+  {
+    title: "OCNE Desktop App for Windows Standalone",
+    description: "Self-contained Avalonia/C# desktop app that opens OCNE without installing .NET. Larger unsigned ZIPs may trigger antivirus warnings.",
     href: WINDOWS_APP_DOWNLOAD,
     fileType: "ZIP",
-    meta: "Windows desktop app",
-    badge: "New",
+    meta: "Windows app, no .NET install",
+    badge: "Standalone",
     icon: HardDriveDownload,
     checksum: WINDOWS_APP_SHA256,
   },
@@ -119,6 +132,7 @@ export default function DownloadsPage() {
               <h1 className="mt-2 text-2xl font-semibold text-white">Files needed to use OCNE</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
                 Install the desktop agent for local terminal features, then keep the setup and troubleshooting files nearby for new devices.
+                If Windows antivirus blocks the standalone app, use the Windows Lite ZIP and install the Microsoft .NET Desktop Runtime first.
               </p>
             </div>
             <Badge className="border-0 bg-[#00a884]/15 px-3 py-1.5 text-[#7ee5c3]">

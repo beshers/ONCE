@@ -21,9 +21,12 @@ The script creates:
 
 ```text
 public/downloads/OCNE-Desktop-App-Windows.zip
+public/downloads/OCNE-Desktop-App-Windows-Lite.zip
 ```
 
-The Windows build is self-contained. Users can extract the ZIP and run `OCNE.Desktop.exe` without installing the .NET runtime separately.
+The standalone Windows build is self-contained. Users can extract the ZIP and run `OCNE.Desktop.exe` without installing the .NET runtime separately.
+
+The Lite Windows build is framework-dependent. It is smaller and is the better choice when antivirus software blocks the unsigned standalone app, but users need the Microsoft .NET 10 Desktop Runtime installed.
 
 ## Publish macOS Zips
 
