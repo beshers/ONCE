@@ -73,7 +73,10 @@ export default function EditorPage() {
   const navigate = useNavigate();
   const projectId = id ? parseInt(id) : undefined;
 
-  const [activeFileId, setActiveFileId] = useState<number | null>(null);
+  const [activeFileId, setActiveFileId] = useState<number | null>(() => {
+    const sharedFileId = Number(new URLSearchParams(window.location.search).get("file"));
+    return sharedFileId || null;
+  });
   const [draftsByFileId, setDraftsByFileId] = useState<Record<number, string>>({});
   const [savedCodeByFileId, setSavedCodeByFileId] = useState<Record<number, string>>({});
   const [activeTab, setActiveTab] = useState("editor");
@@ -298,7 +301,7 @@ export default function EditorPage() {
 
   const saveActiveFile = useCallback(async (intent: SaveIntent = "manual") => {
     if (!activeFileId || !activeFile) return;
-    if (!isModified && intent !== "language") {
+    if (!isModified && intent === "auto") {
       setSaveStatus("saved");
       return;
     }
@@ -313,6 +316,10 @@ export default function EditorPage() {
   }, [activeFile, activeFileId, code, commitMessage, isModified, saveFile]);
 
   const handleSave = () => {
+    if (!activeFile) {
+      toast.info("Select a file before saving.");
+      return;
+    }
     void saveActiveFile("manual").catch(() => undefined);
   };
 
@@ -350,8 +357,42 @@ export default function EditorPage() {
   }, [activeFileId, activeFile, isModified, project?.collaborationMode, saveActiveFile, saveFile.isPending]);
 
   const handleRun = () => {
-    setActiveTab("terminal");
-    toast.info("Use the Terminal Agent panel to run this project on the connected computer.");
+    setActiveTab("local-agent");
+    if (activeFile && isModified && !saveFile.isPending) {
+      void saveActiveFile("manual").catch(() => undefined);
+    }
+    if (project?.localFilesEnabled) {
+      toast.info("Open the Terminal Agent tab to connect the desktop agent and run commands on the device.");
+    } else {
+      toast.info("Enable local files in Project Settings before running on a device.");
+    }
+  };
+
+  const handleShare = async () => {
+    if (!projectId) {
+      toast.info("Open a project before sharing.");
+      return;
+    }
+
+    const url = `${window.location.origin}/projects/${projectId}${activeFileId ? `?file=${activeFileId}` : ""}`;
+    const title = project?.name ? `OCNE project: ${project.name}` : "OCNE project";
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Project link copied to clipboard.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Project link copied to clipboard.");
+      } catch {
+        toast.error("Could not share this project link.");
+      }
+    }
   };
 
   const sendLiveChat = (line?: number) => {
@@ -727,10 +768,10 @@ export default function EditorPage() {
             variant="ghost"
             size="sm"
             onClick={handleSave}
-            disabled={!activeFile || !isModified || saveFile.isPending}
+            disabled={!activeFile || saveFile.isPending}
             className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
           >
-            <Save className="w-4 h-4 mr-1.5" /> {saveFile.isPending ? "Saving" : "Save"}
+            <Save className="w-4 h-4 mr-1.5" /> {saveFile.isPending ? "Saving" : "Save live"}
           </Button>
           <Button
             variant="ghost"
@@ -740,7 +781,7 @@ export default function EditorPage() {
           >
             <Play className="w-4 h-4 mr-1.5" /> Run on device
           </Button>
-          <Button variant="ghost" size="sm" className="text-slate-400">
+          <Button variant="ghost" size="sm" onClick={() => void handleShare()} className="text-slate-400 hover:bg-white/10 hover:text-slate-200">
             <Share2 className="w-4 h-4 mr-1.5" /> Share
           </Button>
         </div>
