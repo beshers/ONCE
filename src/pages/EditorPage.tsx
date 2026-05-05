@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, type ReactElement } from "react";
+import { lazy, Suspense, useCallback, useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/lib/trpcClient";
 import { Card } from "@/components/ui/card";
@@ -27,6 +27,37 @@ const languages = [
   "plaintext", "javascript", "typescript", "python", "php",
   "java", "csharp", "html", "css", "go", "rust", "ruby", "sql", "json", "markdown",
 ];
+
+function draftStorageKey(projectId: number, fileId: number) {
+  return `ocne:project:${projectId}:file:${fileId}:draft`;
+}
+
+function readStoredDraft(projectId: number | undefined, fileId: number | null) {
+  if (!projectId || !fileId) return null;
+  try {
+    return localStorage.getItem(draftStorageKey(projectId, fileId));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDraft(projectId: number | undefined, fileId: number | null, code: string) {
+  if (!projectId || !fileId) return;
+  try {
+    localStorage.setItem(draftStorageKey(projectId, fileId), code);
+  } catch {
+    // The live save still works when browser storage is unavailable.
+  }
+}
+
+function clearStoredDraft(projectId: number | undefined, fileId: number | null) {
+  if (!projectId || !fileId) return;
+  try {
+    localStorage.removeItem(draftStorageKey(projectId, fileId));
+  } catch {
+    // Nothing to clear if browser storage is unavailable.
+  }
+}
 
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
@@ -100,13 +131,12 @@ export default function EditorPage() {
   const heartbeat = trpc.project.heartbeat.useMutation();
 
   const saveFile = trpc.project.fileUpdate.useMutation({
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       toast.success("File saved!");
-      if (activeFileId) {
-        setSavedCodeByFileId((current) => ({ ...current, [activeFileId]: code }));
-      }
+      setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
+      clearStoredDraft(projectId, variables.id);
       utils.project.fileList.invalidate({ projectId: projectId! });
-      utils.project.versions.invalidate({ fileId: activeFileId! });
+      utils.project.versions.invalidate({ fileId: variables.id });
     },
     onError: (error) => {
       toast.error(error.message || "Could not save this file.");
@@ -150,6 +180,7 @@ export default function EditorPage() {
           delete next[activeFileId];
           return next;
         });
+        clearStoredDraft(projectId, activeFileId);
       }
       setActiveFileId(null);
     },
@@ -189,7 +220,8 @@ export default function EditorPage() {
   const activeFile = files?.find((f) => f.id === activeFileId);
   const serverCode = activeFile?.content || "";
   const originalCode = activeFileId ? savedCodeByFileId[activeFileId] ?? serverCode : "";
-  const code = activeFileId ? draftsByFileId[activeFileId] ?? originalCode : "";
+  const storedDraft = readStoredDraft(projectId, activeFileId);
+  const code = activeFileId ? draftsByFileId[activeFileId] ?? (storedDraft !== null && storedDraft !== originalCode ? storedDraft : originalCode) : "";
   const isModified = code !== originalCode;
   const folders = (files || []).filter((item) => item.type === "folder");
   const liveUsers = liveState?.users || [];
@@ -203,6 +235,7 @@ export default function EditorPage() {
   const setCode = (nextCode: string) => {
     if (!activeFileId) return;
     setDraftsByFileId((current) => ({ ...current, [activeFileId]: nextCode }));
+    writeStoredDraft(projectId, activeFileId, nextCode);
   };
 
   useEffect(() => {
@@ -222,14 +255,37 @@ export default function EditorPage() {
     return () => window.clearInterval(timer);
   }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified, heartbeat]);
 
-  const saveActiveFile = async () => {
+  const saveActiveFile = useCallback(async () => {
     if (!activeFileId) return;
     await saveFile.mutateAsync({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
-  };
+  }, [activeFileId, activeFile?.language, code, saveFile]);
 
   const handleSave = () => {
     void saveActiveFile().catch(() => undefined);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (!activeFileId || !isModified || saveFile.isPending) return;
+      void saveActiveFile().catch(() => undefined);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeFileId, isModified, saveActiveFile, saveFile.isPending]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isModified) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isModified]);
 
   useEffect(() => {
     if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
