@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>..\desktop-agent\build\icon.ico</ApplicationIcon>
+    <AssemblyName>OCNE.Desktop</AssemblyName>
+    <RootNamespace>OCNE.Desktop</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>OCNE</Authors>
+    <Product>OCNE Desktop</Product>
+    <Description>Desktop app wrapper for the OCNE online code editor.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.0" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" />
+  </ItemGroup>
+</Project>

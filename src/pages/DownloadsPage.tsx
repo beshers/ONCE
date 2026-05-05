@@ -16,10 +16,23 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
+const WINDOWS_APP_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows.zip";
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
+const WINDOWS_APP_SHA256 =
+  "1CC863B237B3A41ABDB4AAED3EC84E7D1E3A5D4958D9ECB40776B2B012A277AC";
 
 const downloads = [
+  {
+    title: "OCNE Desktop App for Windows",
+    description: "Avalonia/C# desktop app that opens the OCNE website inside a native program window.",
+    href: WINDOWS_APP_DOWNLOAD,
+    fileType: "ZIP",
+    meta: "Windows desktop app",
+    badge: "New",
+    icon: HardDriveDownload,
+    checksum: WINDOWS_APP_SHA256,
+  },
   {
     title: "OCNE Desktop Agent for Windows",
     description: "Required for local terminal access, workspace automation, and desktop-assisted coding features.",
