@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import * as jose from "jose";
 import * as cookie from "cookie";
-import { env } from "../lib/env";
+import { env, requireKimiCredentials } from "../lib/env";
 import { getSessionCookieOptions } from "../lib/cookies";
 import { Session } from "@contracts/constants";
 import { Errors } from "@contracts/errors";
@@ -15,6 +15,7 @@ async function exchangeAuthCode(
   code: string,
   redirectUri: string,
 ): Promise<TokenResponse> {
+  requireKimiCredentials();
   const body = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -73,6 +74,13 @@ export async function authenticateRequest(headers: Headers) {
 
 export function createOAuthCallbackHandler() {
   return async (c: Context) => {
+    try {
+      requireKimiCredentials();
+    } catch (error) {
+      console.error("[OAuth] Kimi credentials missing", error);
+      return c.json({ error: "Kimi OAuth is not configured" }, 503);
+    }
+
     const code = c.req.query("code");
     const state = c.req.query("state");
     const error = c.req.query("error");
