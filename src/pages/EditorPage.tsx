@@ -62,6 +62,36 @@ function clearStoredDraft(projectId: number | undefined, fileId: number | null) 
   }
 }
 
+function editorStateStorageKey(projectId: number | undefined) {
+  return `ocne:project:${projectId || "new"}:editor-state`;
+}
+
+function readEditorState(projectId: number | undefined) {
+  try {
+    const stored = localStorage.getItem(editorStateStorageKey(projectId));
+    if (!stored) return {};
+    return JSON.parse(stored) as { fileId?: number; tab?: string };
+  } catch {
+    return {};
+  }
+}
+
+function writeEditorState(projectId: number | undefined, state: { fileId?: number | null; tab?: string }) {
+  try {
+    const current = readEditorState(projectId);
+    localStorage.setItem(
+      editorStateStorageKey(projectId),
+      JSON.stringify({
+        ...current,
+        ...state,
+        fileId: state.fileId === null ? undefined : state.fileId ?? current.fileId,
+      }),
+    );
+  } catch {
+    // URL state still keeps reloads usable when storage is blocked.
+  }
+}
+
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
 type SaveIntent = "manual" | "auto" | "language";
@@ -73,14 +103,18 @@ export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const projectId = id ? parseInt(id) : undefined;
+  const storedEditorState = readEditorState(projectId);
 
   const [activeFileId, setActiveFileId] = useState<number | null>(() => {
     const sharedFileId = Number(new URLSearchParams(window.location.search).get("file"));
-    return sharedFileId || null;
+    return sharedFileId || storedEditorState.fileId || null;
   });
   const [draftsByFileId, setDraftsByFileId] = useState<Record<number, string>>({});
   const [savedCodeByFileId, setSavedCodeByFileId] = useState<Record<number, string>>({});
-  const [activeTab, setActiveTab] = useState("editor");
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return tab || storedEditorState.tab || "editor";
+  });
   const [newFileName, setNewFileName] = useState("");
   const [newFileLang, setNewFileLang] = useState("plaintext");
   const [newItemType, setNewItemType] = useState<"file" | "folder">("file");
@@ -180,6 +214,9 @@ export default function EditorPage() {
       utils.project.fileList.invalidate({ projectId: projectId! });
       if (newItemType === "folder" && data.id) {
         setExpandedFolders((folders) => new Set([...folders, data.id]));
+      } else if (data.id) {
+        setActiveFileId(data.id);
+        setActiveTab("editor");
       }
       setCreateFileOpen(false);
       setNewFileName("");
@@ -223,6 +260,7 @@ export default function EditorPage() {
         clearStoredDraft(projectId, activeFileId);
       }
       setActiveFileId(null);
+      writeEditorState(projectId, { fileId: null });
     },
   });
 
@@ -297,6 +335,59 @@ export default function EditorPage() {
   };
 
   useEffect(() => {
+    if (!projectId || !files) return;
+    const selectableFiles = files.filter((file) => file.type === "file");
+    let restoreTimer: number | undefined;
+    if (selectableFiles.length === 0) {
+      if (activeFileId !== null) {
+        restoreTimer = window.setTimeout(() => setActiveFileId(null), 0);
+      }
+      return () => {
+        if (restoreTimer) window.clearTimeout(restoreTimer);
+      };
+    }
+
+    const activeStillExists = activeFileId
+      ? selectableFiles.some((file) => file.id === activeFileId)
+      : false;
+    if (activeStillExists) return;
+
+    const storedFileId = readEditorState(projectId).fileId;
+    const restoredFile = storedFileId
+      ? selectableFiles.find((file) => file.id === storedFileId)
+      : null;
+    restoreTimer = window.setTimeout(() => {
+      setActiveFileId(restoredFile?.id ?? selectableFiles[0].id);
+    }, 0);
+    return () => {
+      if (restoreTimer) window.clearTimeout(restoreTimer);
+    };
+  }, [activeFileId, files, projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    writeEditorState(projectId, { fileId: activeFileId, tab: activeTab });
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (activeFileId) {
+      searchParams.set("file", String(activeFileId));
+    } else {
+      searchParams.delete("file");
+    }
+    if (activeTab && activeTab !== "editor") {
+      searchParams.set("tab", activeTab);
+    } else {
+      searchParams.delete("tab");
+    }
+
+    const queryString = searchParams.toString();
+    const nextUrl = `${window.location.pathname}${queryString ? `?${queryString}` : ""}${window.location.hash}`;
+    if (nextUrl !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      window.history.replaceState(window.history.state, "", nextUrl);
+    }
+  }, [activeFileId, activeTab, projectId]);
+
+  useEffect(() => {
     if (!projectId || !project?.collaborationMode || project.collaborationMode === "solo") return;
 
     const sendHeartbeat = () => {
@@ -350,15 +441,30 @@ export default function EditorPage() {
   }, [activeFileId, isModified, saveActiveFile, saveFile.isPending]);
 
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!isModified) return;
-      event.preventDefault();
-      event.returnValue = "";
+    const persistCurrentDraft = () => {
+      if (!isModified || !activeFileId) return;
+      writeStoredDraft(projectId, activeFileId, code);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        persistCurrentDraft();
+      }
+    };
+    const flushLiveSave = () => {
+      persistCurrentDraft();
+      if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
+      void saveActiveFile("auto").catch(() => undefined);
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isModified]);
+    window.addEventListener("blur", flushLiveSave);
+    window.addEventListener("pagehide", persistCurrentDraft);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("blur", flushLiveSave);
+      window.removeEventListener("pagehide", persistCurrentDraft);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeFile, activeFileId, code, isModified, projectId, saveActiveFile, saveFile.isPending]);
 
   useEffect(() => {
     if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
