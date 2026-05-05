@@ -19,7 +19,7 @@ if ('serviceWorker' in navigator) {
 if ('caches' in window) {
   window.addEventListener('load', () => {
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key.startsWith('ocne-')).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
       .catch(() => undefined);
   });
 }

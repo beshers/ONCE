@@ -5,6 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { mkdir, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+import type { Server } from "node:http";
 import { nanoid } from "nanoid";
 import { appRouter } from "./router";
 import { authenticateFromHeaders, createContext } from "./context";
@@ -76,6 +77,7 @@ app.use("/api/trpc/*", async (c) => {
     createContext,
   });
 });
+app.get("/api/health", (c) => c.json({ ok: true }));
 app.all("/api/*", (c) => c.json({ error: "Not Found" }, 404));
 
 export default app;
@@ -90,6 +92,6 @@ if (env.isProduction) {
     console.log(`Server running on http://localhost:${port}/`);
   });
   if (process.env.ENABLE_WS !== "false") {
-    startWSServer(server);
+    startWSServer(server as unknown as Server);
   }
 }
