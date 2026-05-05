@@ -1476,6 +1476,8 @@ export default function EditorPage() {
                 <div>Mode: {project?.collaborationMode || "solo"}</div>
                 <div>Active file: {activeFile?.name || "No file selected"}</div>
                 <div>Local files: {project?.localFilesEnabled ? "Allowed after desktop pairing" : "Off for this project"}</div>
+                <div>Snapshots indexed: {versions?.length || 0}</div>
+                <div>Open review threads: {openReviews}</div>
               </div>
               <textarea
                 value={aiPrompt}
@@ -1491,6 +1493,46 @@ export default function EditorPage() {
               >
                 <Bot className="mr-2 h-4 w-4" /> Ask agent
               </Button>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {[
+                  "Where is the API logic located and how do I use it?",
+                  "The login stopped working after the last three saves. What changed?",
+                  "Write code that matches this project's naming style.",
+                  "Generate a clear save summary for the Verlauf.",
+                ].map((prompt) => (
+                  <Button
+                    key={prompt}
+                    size="sm"
+                    variant="ghost"
+                    disabled={!project?.aiAgentEnabled}
+                    className="h-auto justify-start whitespace-normal border border-white/10 px-3 py-2 text-left text-xs text-slate-200 hover:bg-white/10"
+                    onClick={() => setAiPrompt(prompt)}
+                  >
+                    {prompt}
+                  </Button>
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
+                  <Database className="h-4 w-4" /> Private project database intelligence
+                </div>
+                <p className="mt-2 text-xs leading-5 text-emerald-50/75">
+                  The AI workspace is designed to learn from this project's files, snapshots, review threads, and metadata only. Proprietary code stays project-scoped and is not presented as training data for a public model.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {[
+                    ["Instant Project Familiarity", "Ask where logic lives instead of reading every file first."],
+                    ["AI-Powered Time Travel", "Compare snapshots and identify the save that introduced a regression."],
+                    ["Context-Aware Intelligence", "Suggest code that follows local libraries, names, and patterns."],
+                    ["Frictionless Documentation", "Generate save summaries and clean Verlauf entries automatically."],
+                  ].map(([title, text]) => (
+                    <div key={title} className="rounded-lg border border-emerald-200/10 bg-black/20 p-3">
+                      <div className="text-xs font-semibold text-emerald-100">{title}</div>
+                      <p className="mt-1 text-xs leading-5 text-emerald-50/65">{text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-white">
                   <Wand2 className="h-4 w-4 text-violet-300" /> Collaborative AI autocomplete

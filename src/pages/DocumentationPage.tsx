@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  FileText, Plus, Download, Edit, Trash2, 
-  Clock, User, GitBranch, Wand2
+  FileText, Plus, Download, Edit,
+  Clock, Wand2, Database, Search, ShieldCheck,
+  type LucideIcon,
 } from "lucide-react";
 
 const MOCK_DOCS = [
@@ -52,7 +51,7 @@ export default function DocumentationPage() {
           </div>
           <div className="flex gap-3">
             <Button variant="outline" className="border-slate-700">
-              <AutoFix className="w-4 h-4 mr-2" />
+              <Wand2 className="w-4 h-4 mr-2" />
               Generate Docs
             </Button>
             <Button className="bg-cyan-500 hover:bg-cyan-600">
@@ -61,6 +60,43 @@ export default function DocumentationPage() {
             </Button>
           </div>
         </div>
+
+        <Card className="mb-6 border-emerald-500/20 bg-[#102019]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Database className="h-5 w-5 text-emerald-300" />
+              Private AI Database Intelligence
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="max-w-4xl text-sm leading-6 text-emerald-50/75">
+              OCNE is designed for an AI teammate that understands a project's own database: current files, save snapshots, review threads, and project metadata. That gives teams project-specific answers without sending their proprietary patterns into a public training story.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              {([
+                ["Instant Project Familiarity", "Ask where API logic lives and how to use it on day one.", Search],
+                ["AI-Powered Time Travel", "Find which save changed behavior by comparing Verlauf snapshots.", Clock],
+                ["Context-Aware Intelligence", "Autocomplete can follow local naming, libraries, and conventions.", Wand2],
+                ["Frictionless Documentation", "Generate clean save summaries and commit messages automatically.", FileText],
+              ] satisfies Array<[string, string, LucideIcon]>).map(([title, text, Icon]) => (
+                <div key={String(title)} className="rounded-lg border border-emerald-200/10 bg-black/20 p-3">
+                  <Icon className="mb-2 h-4 w-4 text-emerald-300" />
+                  <div className="text-xs font-semibold text-emerald-50">{title}</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-50/65">{text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <ShieldCheck className="h-4 w-4 text-cyan-300" />
+                Privacy promise
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-300">
+                Project intelligence is presented as project-scoped: the assistant learns from the selected workspace database and history, not from other teams' code, and not as public model training copy.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Docs List */}
