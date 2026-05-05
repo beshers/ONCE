@@ -23,6 +23,8 @@ The script creates:
 public/downloads/OCNE-Desktop-App-Windows.zip
 ```
 
+The Windows build is self-contained. Users can extract the ZIP and run `OCNE.Desktop.exe` without installing the .NET runtime separately.
+
 ## Publish macOS Zips
 
 ```powershell

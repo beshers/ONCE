@@ -22,7 +22,7 @@ const MAC_APP_X64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Intel.zip";
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
 const WINDOWS_APP_SHA256 =
-  "1CC863B237B3A41ABDB4AAED3EC84E7D1E3A5D4958D9ECB40776B2B012A277AC";
+  "CB57D7D63C6C7B2F586613E0128BE25C8A39D10A41E23C1842E56EF83A5DD89E";
 const MAC_APP_ARM64_SHA256 =
   "702EEFC210984C92F4D02B6F4F71E348B62EC272B76B89C5EC0641CFC7E1D98C";
 const MAC_APP_X64_SHA256 =
@@ -31,7 +31,7 @@ const MAC_APP_X64_SHA256 =
 const downloads = [
   {
     title: "OCNE Desktop App for Windows",
-    description: "Avalonia/C# desktop app that opens the OCNE website inside a native program window.",
+    description: "Self-contained Avalonia/C# desktop app that opens OCNE inside a native Windows program window.",
     href: WINDOWS_APP_DOWNLOAD,
     fileType: "ZIP",
     meta: "Windows desktop app",
