@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfileAvatar } from "@/hooks/useProfileAvatar";
-import { getUserInitial } from "@/lib/profileAvatar";
 import { trpc } from "@/lib/trpcClient";
 import {
   Home, FolderOpen, Code2, Terminal, MessageSquare,
@@ -14,7 +12,7 @@ import {
   Bug, Key, Flame, Download, UserRound
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
@@ -63,7 +61,6 @@ const navSections = [
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
-  const avatar = useProfileAvatar(user);
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -72,8 +69,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { data: unreadCount } = trpc.notification.unreadCount.useQuery(undefined, {
     refetchInterval: 10000,
   });
-
-  const initials = getUserInitial(user);
 
   const renderNavItem = ({ icon: Icon, label, path }: { icon: typeof Home; label: string; path: string }) => {
     const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
@@ -128,12 +123,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* User */}
         <div className="px-3 py-3 border-b border-white/5">
           <div className="flex items-center gap-3">
-            <Avatar className="w-8 h-8 ring-2 ring-cyan-500/30 flex-shrink-0">
-              <AvatarImage src={avatar || undefined} className="object-cover" />
-              <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-xs">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar user={user} className="w-8 h-8 ring-2 ring-cyan-500/30 flex-shrink-0" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-xs" />
             {!collapsed && (
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-200 truncate">{user?.name || user?.username || "Developer"}</p>

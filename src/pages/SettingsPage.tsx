@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -36,8 +36,6 @@ export default function SettingsPage() {
     },
   });
 
-  const initials = user?.name?.charAt(0)?.toUpperCase() || user?.username?.charAt(0)?.toUpperCase() || "U";
-
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
@@ -65,12 +63,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4">
-                <Avatar className="w-20 h-20 ring-4 ring-cyan-500/20">
-                  <AvatarImage src={user?.avatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-2xl">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
+                <UserAvatar user={user} className="w-20 h-20 ring-4 ring-cyan-500/20" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-2xl" />
                 <div>
                   <h3 className="text-lg font-bold text-white">{user?.name || "Developer"}</h3>
                   <p className="text-sm text-slate-500">@{user?.username || "user"}</p>

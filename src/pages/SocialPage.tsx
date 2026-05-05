@@ -14,9 +14,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfileAvatar } from "@/hooks/useProfileAvatar";
-import { getUserInitial } from "@/lib/profileAvatar";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -30,13 +28,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-type SocialAuthor = {
-  id?: string | null;
-  name?: string | null;
-  username?: string | null;
-  avatar?: string | null;
-};
-
 function formatTime(value: Date | string) {
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
@@ -46,31 +37,8 @@ function formatTime(value: Date | string) {
   }).format(new Date(value));
 }
 
-function AuthorAvatar({
-  author,
-  currentUser,
-  currentAvatar,
-  className = "h-10 w-10",
-}: {
-  author?: SocialAuthor | null;
-  currentUser?: SocialAuthor | null;
-  currentAvatar?: string | null;
-  className?: string;
-}) {
-  const avatar = author?.id && currentUser?.id === author.id ? currentAvatar : author?.avatar;
-  return (
-    <Avatar className={className}>
-      <AvatarImage src={avatar || undefined} className="object-cover" />
-      <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-semibold text-white">
-        {getUserInitial(author)}
-      </AvatarFallback>
-    </Avatar>
-  );
-}
-
 export default function SocialPage() {
   const { user } = useAuth();
-  const currentAvatar = useProfileAvatar(user);
   const [newPost, setNewPost] = useState("");
   const [newCode, setNewCode] = useState("");
   const [language, setLanguage] = useState("typescript");
@@ -160,7 +128,7 @@ export default function SocialPage() {
         <Card className="rounded-lg border-white/10 bg-[#10101a]">
           <CardContent className="p-4">
             <div className="flex gap-3">
-              <AuthorAvatar author={user} currentUser={user} currentAvatar={currentAvatar} />
+              <UserAvatar user={user} className="h-10 w-10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-semibold text-white" />
               <div className="min-w-0 flex-1 space-y-3">
                 <Textarea
                   value={newPost}
@@ -266,7 +234,7 @@ export default function SocialPage() {
               <CardContent className="p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <AuthorAvatar author={item.author} currentUser={user} currentAvatar={currentAvatar} className="h-9 w-9" />
+                    <UserAvatar user={item.author} className="h-9 w-9" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-semibold text-white" />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-white">{item.author?.name || item.author?.username || "User"}</p>
                       <p className="text-xs text-slate-500">@{item.author?.username || "developer"} · {formatTime(item.post.createdAt)}</p>
@@ -360,7 +328,7 @@ export default function SocialPage() {
                     {commentsLoading && <p className="text-sm text-slate-500">Loading comments...</p>}
                     {comments.map((comment) => (
                       <div key={comment.comment.id} className="flex gap-2 rounded-lg bg-white/[0.03] p-3">
-                        <AuthorAvatar author={comment.author} currentUser={user} currentAvatar={currentAvatar} className="h-7 w-7" />
+                        <UserAvatar user={comment.author} className="h-7 w-7" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-semibold text-white" />
                         <div>
                           <p className="text-xs font-medium text-slate-200">{comment.author?.name || comment.author?.username || "User"}</p>
                           <p className="mt-1 text-sm text-slate-400">{comment.comment.content}</p>

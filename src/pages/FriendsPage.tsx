@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpcClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
@@ -74,12 +74,7 @@ export default function FriendsPage() {
               {(searchResults || []).map((u) => (
                 <div key={u.id} className="flex items-center justify-between p-2 rounded-lg bg-white/[0.02] border border-white/5">
                   <div className="flex items-center gap-3">
-                    <Avatar className="w-8 h-8">
-                      <AvatarImage src={u.avatar || undefined} />
-                      <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-xs">
-                        {u.name?.charAt(0) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <UserAvatar user={u} className="w-8 h-8" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-xs" />
                     <div>
                       <p className="text-sm text-slate-200">{u.name || u.username}</p>
                       <p className="text-[10px] text-slate-500">@{u.username}</p>
@@ -123,12 +118,7 @@ export default function FriendsPage() {
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="relative">
-                      <Avatar className="w-10 h-10">
-                        <AvatarImage src={f.user?.avatar || undefined} />
-                        <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white">
-                          {f.user?.name?.charAt(0) || "U"}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar user={f.user} className="w-10 h-10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white" />
                       <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#13131f] ${
                         f.user?.status === "online" ? "bg-emerald-500" : f.user?.status === "away" ? "bg-amber-500" : "bg-slate-600"
                       }`} />
@@ -169,12 +159,7 @@ export default function FriendsPage() {
               <Card key={r.request.id} className="bg-[#13131f] border-white/5">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Avatar className="w-10 h-10">
-                      <AvatarImage src={r.user?.avatar || undefined} />
-                      <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white">
-                        {r.user?.name?.charAt(0) || "U"}
-                      </AvatarFallback>
-                    </Avatar>
+                    <UserAvatar user={r.user} className="w-10 h-10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white" />
                     <div>
                       <p className="text-sm font-medium text-white">{r.user?.name || "User"}</p>
                       <p className="text-[10px] text-slate-500">wants to be your friend</p>

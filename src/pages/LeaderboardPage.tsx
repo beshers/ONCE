@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpcClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -74,12 +74,7 @@ export default function LeaderboardPage() {
                 }`}>
                   {rank}
                 </div>
-                <Avatar className="w-10 h-10">
-                  <AvatarImage src={entry.user?.avatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-sm">
-                    {entry.user?.name?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
+                <UserAvatar user={entry.user} className="w-10 h-10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-sm" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium text-white truncate">{entry.user?.name || "User"}</p>

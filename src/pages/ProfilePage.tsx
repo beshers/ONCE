@@ -14,9 +14,8 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
-import { useProfileAvatar } from "@/hooks/useProfileAvatar";
 import { getStoredProfileAvatar, getUserInitial, setStoredProfileAvatar } from "@/lib/profileAvatar";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,7 +53,6 @@ function readFileAsDataUrl(file: File) {
 export default function ProfilePage() {
   const { user, refresh } = useAuth();
   const utils = trpc.useUtils();
-  const avatar = useProfileAvatar(user);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [name, setName] = useState(user?.name || "");
   const [username, setUsername] = useState(user?.username || "");
@@ -173,12 +171,7 @@ export default function ProfilePage() {
         <div className="h-28 bg-gradient-to-r from-cyan-500/30 via-slate-700/40 to-violet-500/30" />
         <div className="flex flex-col gap-5 px-5 pb-5 md:flex-row md:items-end md:justify-between">
           <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end">
-            <Avatar className="h-24 w-24 border-4 border-[#10101a] ring-2 ring-cyan-400/40">
-              <AvatarImage src={avatar || undefined} className="object-cover" />
-              <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-4xl font-semibold text-white">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar user={user} fallback={initials} className="h-24 w-24 border-4 border-[#10101a] ring-2 ring-cyan-400/40" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-4xl font-semibold text-white" />
             <div className="space-y-2 pb-1">
               <div>
                 <h1 className="text-2xl font-semibold text-white">{user?.name || user?.username || "Profile"}</h1>
