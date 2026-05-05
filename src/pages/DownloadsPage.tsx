@@ -17,10 +17,16 @@ import { Card } from "@/components/ui/card";
 
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
 const WINDOWS_APP_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows.zip";
+const MAC_APP_ARM64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Apple-Silicon.zip";
+const MAC_APP_X64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Intel.zip";
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
 const WINDOWS_APP_SHA256 =
   "1CC863B237B3A41ABDB4AAED3EC84E7D1E3A5D4958D9ECB40776B2B012A277AC";
+const MAC_APP_ARM64_SHA256 =
+  "702EEFC210984C92F4D02B6F4F71E348B62EC272B76B89C5EC0641CFC7E1D98C";
+const MAC_APP_X64_SHA256 =
+  "F2F1C5DAC2A61C68E3ECBE9E688181B435C2A5511E6C773B43949B88D4CD9CA6";
 
 const downloads = [
   {
@@ -32,6 +38,26 @@ const downloads = [
     badge: "New",
     icon: HardDriveDownload,
     checksum: WINDOWS_APP_SHA256,
+  },
+  {
+    title: "OCNE Desktop App for Apple Silicon",
+    description: "macOS build for M1, M2, M3, and newer Apple Silicon Macs. Requires the .NET 10 runtime.",
+    href: MAC_APP_ARM64_DOWNLOAD,
+    fileType: "ZIP",
+    meta: "macOS arm64",
+    badge: "Apple",
+    icon: HardDriveDownload,
+    checksum: MAC_APP_ARM64_SHA256,
+  },
+  {
+    title: "OCNE Desktop App for Intel Mac",
+    description: "macOS build for older Intel Macs. Requires the .NET 10 runtime.",
+    href: MAC_APP_X64_DOWNLOAD,
+    fileType: "ZIP",
+    meta: "macOS x64",
+    badge: "Apple",
+    icon: HardDriveDownload,
+    checksum: MAC_APP_X64_SHA256,
   },
   {
     title: "OCNE Desktop Agent for Windows",

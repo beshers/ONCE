@@ -23,4 +23,19 @@ The script creates:
 public/downloads/OCNE-Desktop-App-Windows.zip
 ```
 
+## Publish macOS Zips
+
+```powershell
+.\ocne-desktop\publish-macos.ps1
+```
+
+The script creates:
+
+```text
+public/downloads/OCNE-Desktop-App-macOS-Apple-Silicon.zip
+public/downloads/OCNE-Desktop-App-macOS-Intel.zip
+```
+
+These builds are framework-dependent. macOS users need the .NET 10 runtime installed before running `OCNE.Desktop`.
+
 Users can download that file from the OCNE Downloads page.
