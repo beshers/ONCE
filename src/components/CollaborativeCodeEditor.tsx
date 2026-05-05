@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import Editor, { type OnChange, type OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
@@ -13,6 +13,19 @@ type CollaborativeCodeEditorProps = {
   language: string;
   value: string;
   onChange: (value: string) => void;
+  collaborationEnabled?: boolean;
+  fontSize?: number;
+  minimapEnabled?: boolean;
+  wordWrapEnabled?: boolean;
+  onEditorReady?: (editor: Monaco.editor.IStandaloneCodeEditor | null) => void;
+};
+
+type EditorUser = {
+  id?: string | number | null;
+  name?: string | null;
+  fullName?: string | null;
+  username?: string | null;
+  email?: string | null;
 };
 
 function collabUrl() {
@@ -35,6 +48,11 @@ export default function CollaborativeCodeEditor({
   language,
   value,
   onChange,
+  collaborationEnabled = false,
+  fontSize = 14,
+  minimapEnabled = false,
+  wordWrapEnabled = false,
+  onEditorReady,
 }: CollaborativeCodeEditorProps) {
   const { user } = useAuth({ requireAuth: false });
   const bindingRef = useRef<MonacoBinding | null>(null);
@@ -82,15 +100,16 @@ export default function CollaborativeCodeEditor({
   }, []);
 
   const roomName = useMemo(() => `project-${projectId}-file-${fileId}`, [projectId, fileId]);
+  const editorUser = user as EditorUser | null | undefined;
   const displayName =
-    (user as any)?.name ||
-    (user as any)?.fullName ||
-    (user as any)?.username ||
-    (user as any)?.email ||
+    editorUser?.name ||
+    editorUser?.fullName ||
+    editorUser?.username ||
+    editorUser?.email ||
     "OCNE user";
-  const color = userColor(String((user as any)?.id || displayName));
+  const color = userColor(String(editorUser?.id || displayName));
 
-  const cleanup = () => {
+  const cleanup = useCallback(() => {
     bindingRef.current?.destroy();
     providerRef.current?.destroy();
     ydocRef.current?.destroy();
@@ -98,12 +117,19 @@ export default function CollaborativeCodeEditor({
     providerRef.current = null;
     ydocRef.current = null;
     syncedRef.current = false;
-  };
+    onEditorReady?.(null);
+  }, [onEditorReady]);
 
-  useEffect(() => cleanup, []);
+  useEffect(() => cleanup, [cleanup]);
 
   const handleMount: OnMount = (editor, monaco) => {
     cleanup();
+    monaco.editor.setTheme("vs-dark");
+    onEditorReady?.(editor as Monaco.editor.IStandaloneCodeEditor);
+
+    if (!collaborationEnabled) {
+      return;
+    }
 
     const ydoc = new Y.Doc();
     const yText = ydoc.getText("monaco");
@@ -142,10 +168,14 @@ export default function CollaborativeCodeEditor({
       onChange(yText.toString());
     });
 
-    monaco.editor.setTheme("vs-dark");
     bindingRef.current = binding;
     providerRef.current = provider;
     ydocRef.current = ydoc;
+  };
+
+  const handleChange: OnChange = (nextValue) => {
+    if (collaborationEnabled) return;
+    onChange(nextValue || "");
   };
 
   useEffect(() => {
@@ -165,16 +195,25 @@ export default function CollaborativeCodeEditor({
       value={value}
       theme="vs-dark"
       onMount={handleMount}
+      onChange={handleChange}
       options={{
         automaticLayout: true,
-        fontSize: 13,
+        fontSize,
         fontFamily: 'Consolas, "Cascadia Code", "Courier New", monospace',
-        minimap: { enabled: false },
+        fontLigatures: true,
+        minimap: { enabled: minimapEnabled },
         scrollBeyondLastLine: false,
-        wordWrap: "off",
+        wordWrap: wordWrapEnabled ? "on" : "off",
+        lineNumbersMinChars: 4,
+        bracketPairColorization: { enabled: true },
+        guides: { bracketPairs: true, indentation: true },
+        renderLineHighlight: "all",
+        cursorSmoothCaretAnimation: "on",
         tabSize: 2,
         renderWhitespace: "selection",
         smoothScrolling: true,
+        formatOnPaste: true,
+        formatOnType: true,
       }}
     />
   );

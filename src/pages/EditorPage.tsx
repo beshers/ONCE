@@ -1,5 +1,6 @@
-import { lazy, Suspense, useCallback, useState, useEffect, type ReactElement } from "react";
+import { lazy, Suspense, useCallback, useRef, useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
+import type * as Monaco from "monaco-editor";
 import { trpc } from "@/lib/trpcClient";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import {
   ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
   Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown, Bug, Archive, Box, Camera,
   Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw,
-  Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert,
+  Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert, Download,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,6 +62,8 @@ function clearStoredDraft(projectId: number | undefined, fileId: number | null) 
 
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
+type SaveIntent = "manual" | "auto" | "language";
+type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 
 export default function EditorPage() {
@@ -86,6 +89,14 @@ export default function EditorPage() {
   const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
   const [challengeMinutes, setChallengeMinutes] = useState("30");
   const [snippetDraft, setSnippetDraft] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
+  const [minimapEnabled, setMinimapEnabled] = useState(false);
+  const [editorFontSize, setEditorFontSize] = useState(14);
+
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const saveIntentRef = useRef<SaveIntent>("manual");
 
   const utils = trpc.useUtils();
 
@@ -132,13 +143,18 @@ export default function EditorPage() {
 
   const saveFile = trpc.project.fileUpdate.useMutation({
     onSuccess: (_data, variables) => {
-      toast.success("File saved!");
+      if (saveIntentRef.current === "manual") {
+        toast.success("File saved!");
+      }
       setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
+      setSaveStatus("saved");
+      setLastSavedAt(new Date());
       clearStoredDraft(projectId, variables.id);
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: variables.id });
     },
     onError: (error) => {
+      setSaveStatus("error");
       toast.error(error.message || "Could not save this file.");
     },
   });
@@ -208,6 +224,8 @@ export default function EditorPage() {
           delete next[activeFileId];
           return next;
         });
+        clearStoredDraft(projectId, activeFileId);
+        setSaveStatus("saved");
       }
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: activeFileId! });
@@ -236,6 +254,7 @@ export default function EditorPage() {
     if (!activeFileId) return;
     setDraftsByFileId((current) => ({ ...current, [activeFileId]: nextCode }));
     writeStoredDraft(projectId, activeFileId, nextCode);
+    setSaveStatus(nextCode === originalCode ? "saved" : "unsaved");
   };
 
   useEffect(() => {
@@ -255,13 +274,19 @@ export default function EditorPage() {
     return () => window.clearInterval(timer);
   }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified, heartbeat]);
 
-  const saveActiveFile = useCallback(async () => {
-    if (!activeFileId) return;
+  const saveActiveFile = useCallback(async (intent: SaveIntent = "manual") => {
+    if (!activeFileId || !activeFile) return;
+    if (!isModified && intent !== "language") {
+      setSaveStatus("saved");
+      return;
+    }
+    saveIntentRef.current = intent;
+    setSaveStatus("saving");
     await saveFile.mutateAsync({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
-  }, [activeFileId, activeFile?.language, code, saveFile]);
+  }, [activeFile, activeFileId, code, isModified, saveFile]);
 
   const handleSave = () => {
-    void saveActiveFile().catch(() => undefined);
+    void saveActiveFile("manual").catch(() => undefined);
   };
 
   useEffect(() => {
@@ -269,7 +294,7 @@ export default function EditorPage() {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
       event.preventDefault();
       if (!activeFileId || !isModified || saveFile.isPending) return;
-      void saveActiveFile().catch(() => undefined);
+      void saveActiveFile("manual").catch(() => undefined);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -289,14 +314,13 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
-    if (!project?.collaborationMode || project.collaborationMode === "solo") return;
 
     const timer = window.setTimeout(() => {
-      saveFile.mutate({ id: activeFileId, content: code, language: activeFile.language || "plaintext" });
-    }, 5000);
+      void saveActiveFile("auto").catch(() => undefined);
+    }, project?.collaborationMode && project.collaborationMode !== "solo" ? 4500 : 2500);
 
     return () => window.clearTimeout(timer);
-  }, [activeFileId, activeFile, code, isModified, project?.collaborationMode, saveFile]);
+  }, [activeFileId, activeFile, isModified, project?.collaborationMode, saveActiveFile, saveFile.isPending]);
 
   const handleRun = () => {
     setActiveTab("terminal");
@@ -320,6 +344,53 @@ export default function EditorPage() {
 
   // Line numbers for the textarea
   const lines = code.split("\n");
+  const effectiveSaveStatus: SaveStatus = saveStatus === "saving"
+    ? "saving"
+    : isModified
+      ? saveStatus === "error" ? "error" : "unsaved"
+      : "saved";
+  const saveStatusText: Record<SaveStatus, string> = {
+    saved: lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
+    saving: "Saving...",
+    unsaved: "Unsaved changes",
+    error: "Save failed",
+  };
+
+  const handleFormatDocument = () => {
+    const action = editorRef.current?.getAction("editor.action.formatDocument");
+    if (!action) {
+      toast.info("Formatting is not available for this file type.");
+      return;
+    }
+    void action.run().catch(() => toast.error("Could not format this file."));
+  };
+
+  const handleResetDraft = () => {
+    if (!activeFileId) return;
+    setDraftsByFileId((current) => {
+      const next = { ...current };
+      delete next[activeFileId];
+      return next;
+    });
+    clearStoredDraft(projectId, activeFileId);
+    setSaveStatus("saved");
+    toast.info("Unsaved draft discarded.");
+  };
+
+  const handleDownloadFile = () => {
+    if (!activeFile) return;
+    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = activeFile.name || "ocne-file.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleEditorReady = useCallback((editor: Monaco.editor.IStandaloneCodeEditor | null) => {
+    editorRef.current = editor;
+  }, []);
 
   const openCreateDialog = (parentId: number | null = null, type: "file" | "folder" = "file") => {
     setNewItemType(type);
@@ -580,9 +651,15 @@ export default function EditorPage() {
               <Badge variant="outline" className="border-white/10 text-slate-400 text-[10px] h-5">
                 {activeFile?.language || project?.language || "plaintext"}
               </Badge>
-              {isModified && (
-                <span className="text-amber-400">● Modified</span>
-              )}
+              <span className={
+                effectiveSaveStatus === "saved"
+                  ? "text-emerald-400"
+                  : effectiveSaveStatus === "error"
+                    ? "text-red-400"
+                    : "text-amber-400"
+              }>
+                {saveStatusText[effectiveSaveStatus]}
+              </span>
               {project?.collaborationMode && project.collaborationMode !== "solo" && (
                 <span className="text-emerald-400">Live sync on</span>
               )}
@@ -610,10 +687,10 @@ export default function EditorPage() {
             variant="ghost"
             size="sm"
             onClick={handleSave}
-            disabled={!isModified || saveFile.isPending}
+            disabled={!activeFile || !isModified || saveFile.isPending}
             className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
           >
-            <Save className="w-4 h-4 mr-1.5" /> Save live
+            <Save className="w-4 h-4 mr-1.5" /> {saveFile.isPending ? "Saving" : "Save"}
           </Button>
           <Button
             variant="ghost"
@@ -757,11 +834,60 @@ export default function EditorPage() {
               <span className="min-w-0 truncate text-xs text-slate-400">
                 {activeFile?.name || "Select a file"}
               </span>
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+                {activeFile && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleFormatDocument}
+                      className="h-7 border border-white/10 px-2 text-[11px] text-slate-200 hover:bg-white/10"
+                    >
+                      <Wand2 className="mr-1.5 h-3.5 w-3.5" /> Format
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setWordWrapEnabled((enabled) => !enabled)}
+                      className={`h-7 border px-2 text-[11px] hover:bg-white/10 ${wordWrapEnabled ? "border-cyan-400/30 text-cyan-300" : "border-white/10 text-slate-300"}`}
+                    >
+                      Wrap
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setMinimapEnabled((enabled) => !enabled)}
+                      className={`h-7 border px-2 text-[11px] hover:bg-white/10 ${minimapEnabled ? "border-cyan-400/30 text-cyan-300" : "border-white/10 text-slate-300"}`}
+                    >
+                      Map
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleDownloadFile}
+                      className="h-7 border border-white/10 px-2 text-[11px] text-slate-200 hover:bg-white/10"
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" /> File
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleResetDraft}
+                      disabled={!isModified}
+                      className="h-7 border border-white/10 px-2 text-[11px] text-slate-300 hover:bg-white/10 disabled:opacity-40"
+                    >
+                      <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
+                    </Button>
+                  </>
+                )}
                 {activeFile && (
                   <Select
                     value={activeFile.language || "plaintext"}
-                    onValueChange={(v) => saveFile.mutate({ id: activeFile.id, content: code, language: v })}
+                    onValueChange={(v) => {
+                      saveIntentRef.current = "language";
+                      setSaveStatus("saving");
+                      saveFile.mutate({ id: activeFile.id, content: code, language: v });
+                    }}
                   >
                     <SelectTrigger className="h-6 bg-white/5 border-white/10 text-white text-[11px] w-28">
                       <SelectValue />
@@ -786,7 +912,12 @@ export default function EditorPage() {
                     language={activeFile.language || "plaintext"}
                     value={code}
                     onChange={setCode}
-                />
+                    collaborationEnabled={Boolean(project?.collaborationMode && project.collaborationMode !== "solo")}
+                    fontSize={editorFontSize}
+                    minimapEnabled={minimapEnabled}
+                    wordWrapEnabled={wordWrapEnabled}
+                    onEditorReady={handleEditorReady}
+                  />
                 </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center p-8 text-center text-slate-600">
@@ -802,7 +933,27 @@ export default function EditorPage() {
               <span>{activeFile?.language || "plaintext"}</span>
               <span>{lines.length} lines</span>
               <span>{code.length} chars</span>
-              {isModified && <span className="text-amber-400">unsaved</span>}
+              <label className="ml-auto hidden items-center gap-1 sm:flex">
+                <span>Font</span>
+                <input
+                  type="range"
+                  min="12"
+                  max="18"
+                  value={editorFontSize}
+                  onChange={(event) => setEditorFontSize(Number(event.target.value))}
+                  className="w-20 accent-cyan-400"
+                />
+                <span>{editorFontSize}px</span>
+              </label>
+              <span className={
+                effectiveSaveStatus === "saved"
+                  ? "text-emerald-400"
+                  : effectiveSaveStatus === "error"
+                    ? "text-red-400"
+                    : "text-amber-400"
+              }>
+                {saveStatusText[effectiveSaveStatus]}
+              </span>
             </div>
           </div>
           <aside className="flex min-h-[360px] flex-col border-t border-white/10 bg-[#101827] xl:border-l xl:border-t-0">
