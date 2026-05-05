@@ -137,6 +137,7 @@ export default function EditorPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMode, setShareMode] = useState<"view" | "collab">("view");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const [saveMessage, setSaveMessage] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [minimapEnabled, setMinimapEnabled] = useState(false);
@@ -194,11 +195,12 @@ export default function EditorPage() {
       const currentLocalDraft = readStoredDraft(projectId, variables.id);
       const hasNewerLocalDraft = currentLocalDraft !== null && currentLocalDraft !== variables.content;
       if (saveIntentRef.current === "manual") {
-        toast.success("File saved!");
+        toast.success("Code saved!");
       }
       setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
       setSaveStatus(hasNewerLocalDraft ? "unsaved" : "saved");
       setLastSavedAt(new Date());
+      setSaveMessage(hasNewerLocalDraft ? "Saved latest synced version. New edits are still waiting." : "Code saved successfully.");
       if (saveIntentRef.current === "manual") {
         setCommitMessage("");
       }
@@ -440,6 +442,12 @@ export default function EditorPage() {
     const timer = window.setInterval(sendHeartbeat, 12000);
     return () => window.clearInterval(timer);
   }, [projectId, project?.collaborationMode, activeFileId, activeFile?.name, isModified, heartbeat]);
+
+  useEffect(() => {
+    if (!saveMessage) return;
+    const timer = window.setTimeout(() => setSaveMessage(""), 2800);
+    return () => window.clearTimeout(timer);
+  }, [saveMessage]);
 
   const saveActiveFile = useCallback(async (intent: SaveIntent = "manual") => {
     if (!activeFileId || !activeFile) return;
@@ -954,6 +962,12 @@ export default function EditorPage() {
           </Button>
         </div>
       </div>
+      {saveMessage && (
+        <div className="mb-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 shadow-lg shadow-emerald-950/20">
+          <span className="mr-2 inline-flex h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.8)]" />
+          {saveMessage}
+        </div>
+      )}
 
       <Dialog open={deviceBridgeOpen} onOpenChange={setDeviceBridgeOpen}>
         <DialogContent className="max-w-2xl border-white/10 bg-[#111827] text-white">
