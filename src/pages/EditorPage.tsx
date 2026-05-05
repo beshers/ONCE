@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useRef, useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
+import { DiffEditor } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { trpc } from "@/lib/trpcClient";
 import { Card } from "@/components/ui/card";
@@ -90,6 +91,8 @@ export default function EditorPage() {
   const [liveChatMessages, setLiveChatMessages] = useState<Array<{ id: number; author: string; text: string; line?: number }>>([]);
   const [challengeMinutes, setChallengeMinutes] = useState("30");
   const [snippetDraft, setSnippetDraft] = useState("");
+  const [commitMessage, setCommitMessage] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
@@ -151,6 +154,9 @@ export default function EditorPage() {
       setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
       setSaveStatus("saved");
       setLastSavedAt(new Date());
+      if (saveIntentRef.current === "manual") {
+        setCommitMessage("");
+      }
       clearStoredDraft(projectId, variables.id);
       utils.project.fileList.invalidate({ projectId: projectId! });
       utils.project.versions.invalidate({ fileId: variables.id });
@@ -224,6 +230,7 @@ export default function EditorPage() {
   const restoreVersion = trpc.project.restoreVersion.useMutation({
     onSuccess: () => {
       toast.success("Version restored!");
+      setSelectedVersionId(null);
       if (activeFileId) {
         setDraftsByFileId((current) => {
           const next = { ...current };
@@ -257,7 +264,8 @@ export default function EditorPage() {
   const liveActivity = liveState?.activity || [];
   const followedUser = liveUsers.find((user) => user.userId === followUserId);
   const openReviews = (reviews || []).filter((item) => item.review.status === "open").length;
-  const latestVersion = versions?.[0];
+  const latestVersion = versions?.[0]?.version;
+  const selectedVersion = (versions || []).find((item) => item.version.id === selectedVersionId) || versions?.[0] || null;
   const collaborationEnabled = Boolean(project?.collaborationMode && project.collaborationMode !== "solo");
   const canShowPreview = ["html", "css", "javascript"].includes(activeFile?.language || "");
   const previewDocument = activeFile?.language === "html"
@@ -296,8 +304,13 @@ export default function EditorPage() {
     }
     saveIntentRef.current = intent;
     setSaveStatus("saving");
-    await saveFile.mutateAsync({ id: activeFileId, content: code, language: activeFile?.language || "plaintext" });
-  }, [activeFile, activeFileId, code, isModified, saveFile]);
+    await saveFile.mutateAsync({
+      id: activeFileId,
+      content: code,
+      language: activeFile?.language || "plaintext",
+      commitMessage: intent === "manual" ? commitMessage.trim() || undefined : undefined,
+    });
+  }, [activeFile, activeFileId, code, commitMessage, isModified, saveFile]);
 
   const handleSave = () => {
     void saveActiveFile("manual").catch(() => undefined);
@@ -703,6 +716,13 @@ export default function EditorPage() {
               )}
             </div>
           )}
+          <Input
+            value={commitMessage}
+            onChange={(event) => setCommitMessage(event.target.value)}
+            disabled={!activeFile || saveFile.isPending}
+            placeholder="Commit message"
+            className="h-8 w-44 border-white/10 bg-white/[0.04] text-xs text-white placeholder:text-slate-600"
+          />
           <Button
             variant="ghost"
             size="sm"
@@ -1283,49 +1303,98 @@ export default function EditorPage() {
         <TabsContent value="versions" className="flex-1 mt-0">
           <div className="h-full bg-[#13131f] border border-white/5 rounded-xl p-4 overflow-auto">
             {activeFile ? (
-              <div className="space-y-2">
+              <div className="grid min-h-[620px] gap-4 lg:grid-cols-[330px_minmax(0,1fr)]">
                 <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-3">
                   <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <Clock className="h-4 w-4 text-cyan-300" /> Time-travel versioning
+                    <Clock className="h-4 w-4 text-cyan-300" /> Verlauf
                   </h3>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Every save creates a point in the file timeline. The next step is whole-project restore, but file restore is already available below.
+                    Every save creates a snapshot. Current code stays in the file table, while this timeline keeps who saved what and when.
                   </p>
-                </div>
-                {(versions || []).length === 0 && (
-                  <p className="text-sm text-slate-500 text-center py-8">No version history yet. Save your file to create versions.</p>
-                )}
-                {(versions || []).map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/5 hover:border-cyan-500/20 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-[10px] text-white font-bold">
-                        v{v.versionNumber}
-                      </div>
-                      <div>
-                        <p className="text-sm text-slate-300">Version {v.versionNumber}</p>
-                        <p className="text-[10px] text-slate-600">
-                          <Clock className="w-3 h-3 inline mr-1" />
-                          {new Date(v.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-cyan-400 hover:text-cyan-300"
-                      onClick={() => {
-                        if (confirm("Restore this version? Current content will be overwritten.")) {
-                          restoreVersion.mutate({ versionId: v.id });
-                        }
-                      }}
-                    >
-                      Restore
-                    </Button>
+                  <div className="mt-3 space-y-2">
+                    {(versions || []).length === 0 && (
+                      <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-500">
+                        No version history yet. Save your file to create snapshots.
+                      </p>
+                    )}
+                    {(versions || []).map(({ version, author }) => (
+                      <button
+                        key={version.id}
+                        type="button"
+                        onClick={() => setSelectedVersionId(version.id)}
+                        className={`w-full rounded-lg border p-3 text-left transition-all ${
+                          selectedVersion?.version.id === version.id
+                            ? "border-cyan-400/40 bg-cyan-500/10"
+                            : "border-white/5 bg-white/[0.02] hover:border-cyan-500/20"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-[10px] font-bold text-white">
+                            v{version.versionNumber}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-slate-200">
+                              {version.commitMessage || `Version ${version.versionNumber}`}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-600">
+                              Saved by {author?.name || author?.username || version.userId} at {new Date(version.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                ))}
+                </div>
+
+                <div className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-[#080b12]">
+                  {selectedVersion ? (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101827] px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-white">
+                            Diff: current code vs v{selectedVersion.version.versionNumber}
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-500">
+                            {selectedVersion.version.commitMessage || "Snapshot"} by {selectedVersion.author?.name || selectedVersion.author?.username || selectedVersion.version.userId}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="border border-cyan-400/20 text-cyan-300 hover:bg-cyan-500/10"
+                          onClick={() => {
+                            if (confirm("Restore this version? A new snapshot will be created so no history is lost.")) {
+                              restoreVersion.mutate({ versionId: selectedVersion.version.id });
+                            }
+                          }}
+                        >
+                          <RotateCcw className="mr-2 h-4 w-4" /> Restore this version
+                        </Button>
+                      </div>
+                      <div className="h-[560px]">
+                        <DiffEditor
+                          height="100%"
+                          language={activeFile.language || "plaintext"}
+                          original={selectedVersion.version.content || ""}
+                          modified={code}
+                          theme="vs-dark"
+                          options={{
+                            automaticLayout: true,
+                            readOnly: true,
+                            renderSideBySide: true,
+                            minimap: { enabled: false },
+                            fontSize: 13,
+                            scrollBeyondLastLine: false,
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full min-h-[420px] items-center justify-center p-8 text-center text-sm text-slate-500">
+                      Select a snapshot to compare it with the current code.
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-slate-500 text-center py-16">Select a file to view version history</p>

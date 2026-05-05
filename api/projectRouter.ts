@@ -229,6 +229,7 @@ export const projectRouter = createRouter({
       content: z.string(),
       name: z.string().optional(),
       language: z.string().optional(),
+      commitMessage: z.string().max(255).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
@@ -248,6 +249,7 @@ export const projectRouter = createRouter({
         fileId: file.id,
         userId: ctx.user.id,
         content: input.content,
+        commitMessage: input.commitMessage || null,
         versionNumber: sql`(SELECT COALESCE(MAX(versionNumber), 0) + 1 FROM project_versions WHERE fileId = ${file.id})`,
       });
       await db.update(projectFiles).set({
@@ -405,7 +407,11 @@ export const projectRouter = createRouter({
         where: and(eq(projectCollaborators.projectId, file.projectId), eq(projectCollaborators.userId, ctx.user.id)),
       }));
       if (!hasAccess) throw new Error("Access denied");
-      const versions = await db.select().from(projectVersions)
+      const versions = await db.select({
+        version: projectVersions,
+        author: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
+      }).from(projectVersions)
+        .leftJoin(users, eq(projectVersions.userId, users.id))
         .where(eq(projectVersions.fileId, input.fileId))
         .orderBy(desc(projectVersions.createdAt));
       return versions;
@@ -426,6 +432,14 @@ export const projectRouter = createRouter({
         ),
       }));
       if (!canEdit) throw new Error("Edit access denied");
+      await db.insert(projectVersions).values({
+        projectId: version.projectId,
+        fileId: version.fileId,
+        userId: ctx.user.id,
+        content: version.content,
+        commitMessage: `Restored version ${version.versionNumber}`,
+        versionNumber: sql`(SELECT COALESCE(MAX(versionNumber), 0) + 1 FROM project_versions WHERE fileId = ${version.fileId})`,
+      });
       await db.update(projectFiles).set({ content: version.content, updatedAt: new Date() }).where(eq(projectFiles.id, version.fileId));
       return { success: true };
     }),
