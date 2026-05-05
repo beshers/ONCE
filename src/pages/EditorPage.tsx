@@ -15,13 +15,14 @@ import CollaborativeCodeEditor from "@/components/CollaborativeCodeEditor";
 import DeviceEditorBridge from "@/components/DeviceEditorBridge";
 import { toast } from "sonner";
 import {
-  FileCode, Folder, Save, Play, MessageSquare,
+  FileCode, Folder, Play, MessageSquare,
   Plus, Trash2, Clock,
   Users, ArrowLeft, Share2, GitBranch, Bot, HardDrive, Settings, Sparkles, MonitorUp,
   ChevronDown, ChevronRight, FolderPlus, Radio, Activity, Mic, Video, Eye, StickyNote,
   Monitor, ShieldCheck, Wand2, GitPullRequest, Send, Crown, Bug, Archive, Box, Camera,
   Trophy, Timer, PenTool, GitMerge, BarChart3, Smartphone, Library, Package, RotateCcw,
   Cloud, Server, WifiOff, GraduationCap, LockKeyhole, Workflow, Database, ShieldAlert, Download,
+  Link2, Copy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -96,6 +97,9 @@ export default function EditorPage() {
   const [snippetDraft, setSnippetDraft] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [deviceBridgeOpen, setDeviceBridgeOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareMode, setShareMode] = useState<"view" | "collab">("view");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
@@ -274,6 +278,16 @@ export default function EditorPage() {
   const previewDocument = activeFile?.language === "html"
     ? code
     : `<!doctype html><html><head><style>${activeFile?.language === "css" ? code : ""}</style></head><body><div id="app"></div><script>${activeFile?.language === "javascript" ? code : ""}</script></body></html>`;
+  const projectShareBaseUrl = projectId
+    ? `${window.location.origin}/projects/${projectId}${activeFileId ? `?file=${activeFileId}` : ""}`
+    : window.location.origin;
+  const shareUrl = projectId
+    ? `${projectShareBaseUrl}${projectShareBaseUrl.includes("?") ? "&" : "?"}share=${shareMode}&aiContext=project`
+    : window.location.origin;
+  const devicePreviewUrl = projectId
+    ? `${projectShareBaseUrl}${projectShareBaseUrl.includes("?") ? "&" : "?"}preview=device&share=view&aiContext=project`
+    : window.location.origin;
+  const deviceQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(devicePreviewUrl)}`;
 
   const setCode = (nextCode: string) => {
     if (!activeFileId) return;
@@ -311,7 +325,7 @@ export default function EditorPage() {
       id: activeFileId,
       content: code,
       language: activeFile?.language || "plaintext",
-      commitMessage: intent === "manual" ? commitMessage.trim() || undefined : undefined,
+      commitMessage: intent === "manual" ? commitMessage.trim() || undefined : "Save Live sync",
     });
   }, [activeFile, activeFileId, code, commitMessage, isModified, saveFile]);
 
@@ -351,13 +365,14 @@ export default function EditorPage() {
 
     const timer = window.setTimeout(() => {
       void saveActiveFile("auto").catch(() => undefined);
-    }, project?.collaborationMode && project.collaborationMode !== "solo" ? 4500 : 2500);
+    }, 500);
 
     return () => window.clearTimeout(timer);
   }, [activeFileId, activeFile, isModified, project?.collaborationMode, saveActiveFile, saveFile.isPending]);
 
   const handleRun = () => {
     setActiveTab("local-agent");
+    setDeviceBridgeOpen(true);
     if (activeFile && isModified && !saveFile.isPending) {
       void saveActiveFile("manual").catch(() => undefined);
     }
@@ -373,21 +388,26 @@ export default function EditorPage() {
       toast.info("Open a project before sharing.");
       return;
     }
+    setShareOpen(true);
+  };
 
-    const url = `${window.location.origin}/projects/${projectId}${activeFileId ? `?file=${activeFileId}` : ""}`;
+  const createShareLink = async () => {
+    if (activeFile && !saveFile.isPending) {
+      await saveActiveFile("manual").catch(() => undefined);
+    }
     const title = project?.name ? `OCNE project: ${project.name}` : "OCNE project";
 
     try {
       if (navigator.share) {
-        await navigator.share({ title, url });
+        await navigator.share({ title, url: shareUrl });
         return;
       }
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(shareUrl);
       toast.success("Project link copied to clipboard.");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(shareUrl);
         toast.success("Project link copied to clipboard.");
       } catch {
         toast.error("Could not share this project link.");
@@ -771,7 +791,8 @@ export default function EditorPage() {
             disabled={!activeFile || saveFile.isPending}
             className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
           >
-            <Save className="w-4 h-4 mr-1.5" /> {saveFile.isPending ? "Saving" : "Save live"}
+            <span className="mr-1.5 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)] animate-pulse" />
+            {saveFile.isPending ? "Syncing" : "Save live"}
           </Button>
           <Button
             variant="ghost"
@@ -779,13 +800,113 @@ export default function EditorPage() {
             onClick={handleRun}
             className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10"
           >
-            <Play className="w-4 h-4 mr-1.5" /> Run on device
+            <Smartphone className="w-4 h-4 mr-1.5" /> Run on device
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void handleShare()} className="text-slate-400 hover:bg-white/10 hover:text-slate-200">
-            <Share2 className="w-4 h-4 mr-1.5" /> Share
+            <Link2 className="w-4 h-4 mr-1.5" /> Share
           </Button>
         </div>
       </div>
+
+      <Dialog open={deviceBridgeOpen} onOpenChange={setDeviceBridgeOpen}>
+        <DialogContent className="max-w-2xl border-white/10 bg-[#111827] text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-cyan-300" /> Run on Device
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+            <div className="rounded-xl border border-white/10 bg-white p-4">
+              <img src={deviceQrUrl} alt="Device preview QR code" className="h-44 w-44" />
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 p-3">
+                <div className="text-sm font-semibold text-cyan-100">Instant Deployment</div>
+                <p className="mt-1 text-xs leading-5 text-cyan-50/75">
+                  Scan this QR code on a phone or tablet to open the live project view. It uses the latest database snapshot and keeps AI context attached to the link.
+                </p>
+              </div>
+              <Input value={devicePreviewUrl} readOnly className="border-white/10 bg-black/30 font-mono text-xs text-white" />
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(devicePreviewUrl).then(() => toast.success("Device link copied."));
+                  }}
+                  variant="ghost"
+                  className="border border-white/10 text-slate-100 hover:bg-white/10"
+                >
+                  <Copy className="mr-2 h-4 w-4" /> Copy device link
+                </Button>
+                <Button
+                  onClick={() => {
+                    setDeviceBridgeOpen(false);
+                    setActiveTab("local-agent");
+                  }}
+                  className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                >
+                  <MonitorUp className="mr-2 h-4 w-4" /> Open Terminal Agent
+                </Button>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">
+                For native command execution, install and connect the OCNE Desktop Agent. For mobile preview, the QR link opens the shared project page.
+              </p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="max-w-2xl border-white/10 bg-[#111827] text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5 text-violet-300" /> Share Project
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {([
+                ["view", "View Only", "Share a read-focused snapshot link for review, demos, or support."],
+                ["collab", "Collaborative", "Invite others into the live session with project AI context attached."],
+              ] as const).map(([mode, title, text]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setShareMode(mode)}
+                  className={`rounded-xl border p-3 text-left transition-all ${
+                    shareMode === mode
+                      ? "border-violet-400/50 bg-violet-500/10"
+                      : "border-white/10 bg-black/20 hover:bg-white/[0.04]"
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-white">{title}</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">{text}</p>
+                </button>
+              ))}
+            </div>
+            <div className="rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3">
+              <div className="text-sm font-semibold text-emerald-100">AI Share</div>
+              <p className="mt-1 text-xs leading-5 text-emerald-50/75">
+                Shared links include project AI context, so the receiver can ask questions about the same files, snapshots, and Verlauf history.
+              </p>
+            </div>
+            <Input value={shareUrl} readOnly className="border-white/10 bg-black/30 font-mono text-xs text-white" />
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void createShareLink()} className="bg-violet-500 text-white hover:bg-violet-400">
+                <Share2 className="mr-2 h-4 w-4" /> Create share link
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void navigator.clipboard.writeText(shareUrl).then(() => toast.success("Share link copied."));
+                }}
+                className="border border-white/10 text-slate-100 hover:bg-white/10"
+              >
+                <Copy className="mr-2 h-4 w-4" /> Copy
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
         <div className="mb-2 overflow-x-auto pb-1">
