@@ -91,4 +91,12 @@ export const socialRouter = createRouter({
       await db.update(socialPosts).set({ likes: sql`GREATEST(${socialPosts.likes} - 1, 0)` }).where(eq(socialPosts.id, input.postId));
       return { success: true };
     }),
+
+  sharePost: authedQuery
+    .input(z.object({ postId: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = getDb();
+      await db.update(socialPosts).set({ shares: sql`${socialPosts.shares} + 1` }).where(eq(socialPosts.id, input.postId));
+      return { success: true };
+    }),
 });

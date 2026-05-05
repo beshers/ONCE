@@ -11,6 +11,7 @@ import {
   Save,
   UserRound,
 } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfileAvatar } from "@/hooks/useProfileAvatar";
@@ -19,6 +20,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -53,6 +62,8 @@ export default function ProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar || "");
   const [message, setMessage] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareText, setShareText] = useState("");
 
   const initials = getUserInitial(user);
   const hasLocalPhoto = !!getStoredProfileAvatar(user?.id);
@@ -70,11 +81,22 @@ export default function ProfilePage() {
   const updateProfile = trpc.user.updateProfile.useMutation({
     onSuccess: async () => {
       setMessage("Profile saved.");
+      setShareText(`${user?.name || user?.username || "I"} updated my OCNE profile.`);
+      setShareDialogOpen(true);
       await utils.auth.me.invalidate();
       await utils.user.me.invalidate();
       await refresh();
     },
     onError: (error) => setMessage(error.message || "Profile could not be saved."),
+  });
+
+  const shareProfileUpdate = trpc.social.createPost.useMutation({
+    onSuccess: async () => {
+      await utils.social.feed.invalidate();
+      setShareDialogOpen(false);
+      toast.success("Shared to the social feed.");
+    },
+    onError: (error) => toast.error(error.message || "Could not share this update."),
   });
 
   const handleSave = () => {
@@ -105,6 +127,10 @@ export default function ProfilePage() {
     const dataUrl = await readFileAsDataUrl(file);
     const saved = setStoredProfileAvatar(user.id, dataUrl);
     setMessage(saved ? "Profile photo updated on this device." : "The browser could not save this photo.");
+    if (saved) {
+      setShareText(`${user.name || user.username || "I"} updated my OCNE profile photo.`);
+      setShareDialogOpen(true);
+    }
   };
 
   const handleRemoveLocalPhoto = () => {
@@ -115,6 +141,34 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent className="border-white/10 bg-[#10101a] text-slate-100">
+          <DialogHeader>
+            <DialogTitle>Share this profile update?</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Post a short update to the social feed so other developers can see what changed.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={shareText}
+            onChange={(event) => setShareText(event.target.value)}
+            className="min-h-24 border-white/10 bg-white/5 text-slate-100"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareDialogOpen(false)} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
+              Not Now
+            </Button>
+            <Button
+              onClick={() => shareProfileUpdate.mutate({ content: shareText.trim() })}
+              disabled={!shareText.trim() || shareProfileUpdate.isPending}
+              className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            >
+              {shareProfileUpdate.isPending ? "Sharing..." : "Share to Feed"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <section className="overflow-hidden rounded-lg border border-white/10 bg-[#10101a]">
         <div className="h-28 bg-gradient-to-r from-cyan-500/30 via-slate-700/40 to-violet-500/30" />
         <div className="flex flex-col gap-5 px-5 pb-5 md:flex-row md:items-end md:justify-between">
