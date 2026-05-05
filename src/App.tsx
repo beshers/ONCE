@@ -34,6 +34,7 @@ const EnvVariablesPage = lazy(() => import("./pages/EnvVariablesPage"))
 const ActivityHeatmapPage = lazy(() => import("./pages/ActivityHeatmapPage"))
 const ThemeSettingsPage = lazy(() => import("./pages/ThemeSettingsPage"))
 const LocalAgentPage = lazy(() => import("./pages/LocalAgentPage"))
+const ProfilePage = lazy(() => import("./pages/ProfilePage"))
 
 function LoadingScreen() {
   return (
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/env-vars" element={<AuthWrapper><EnvVariablesPage /></AuthWrapper>} />
           <Route path="/activity" element={<AuthWrapper><ActivityHeatmapPage /></AuthWrapper>} />
           <Route path="/themes" element={<AuthWrapper><ThemeSettingsPage /></AuthWrapper>} />
+          <Route path="/profile" element={<AuthWrapper><ProfilePage /></AuthWrapper>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

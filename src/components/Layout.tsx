@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfileAvatar } from "@/hooks/useProfileAvatar";
+import { getUserInitial } from "@/lib/profileAvatar";
 import { trpc } from "@/lib/trpcClient";
 import {
   Home, FolderOpen, Code2, Terminal, MessageSquare,
@@ -9,7 +11,7 @@ import {
   Globe,
   Trophy, Palette, Zap, GitBranch, Bookmark,
   Building2, Plug, FileText, Radio, Package, Rocket,
-  Bug, Key, Flame, Download
+  Bug, Key, Flame, Download, UserRound
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -48,18 +50,20 @@ const navItems = [
   { icon: Key, label: "Env Vars", path: "/env-vars" },
   { icon: Flame, label: "Activity", path: "/activity" },
   { icon: Palette, label: "Themes", path: "/themes" },
+  { icon: UserRound, label: "Profile", path: "/profile" },
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 const navSections = [
   { title: "Main", items: navItems.slice(0, 6) },
   { title: "Community", items: navItems.slice(6, 10) },
-  { title: "Workspace", items: navItems.slice(10, -1) },
-  { title: "Account", items: navItems.slice(-1) },
+  { title: "Workspace", items: navItems.slice(10, -2) },
+  { title: "Account", items: navItems.slice(-2) },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const avatar = useProfileAvatar(user);
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -69,7 +73,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     refetchInterval: 10000,
   });
 
-  const initials = user?.name?.charAt(0)?.toUpperCase() || user?.username?.charAt(0)?.toUpperCase() || "U";
+  const initials = getUserInitial(user);
 
   const renderNavItem = ({ icon: Icon, label, path }: { icon: typeof Home; label: string; path: string }) => {
     const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
@@ -125,7 +129,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-3 py-3 border-b border-white/5">
           <div className="flex items-center gap-3">
             <Avatar className="w-8 h-8 ring-2 ring-cyan-500/30 flex-shrink-0">
-              <AvatarImage src={user?.avatar || undefined} />
+              <AvatarImage src={avatar || undefined} className="object-cover" />
               <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-white text-xs">
                 {initials}
               </AvatarFallback>
