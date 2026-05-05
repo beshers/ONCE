@@ -1,0 +1,13 @@
+OCNE Troubleshooting Notes
+
+Downloads:
+- If Windows blocks the installer, choose More info, then Run anyway only if the file came from your OCNE Downloads page.
+- Compare the installer SHA-256 shown on the Downloads page when you need to verify the file.
+
+Terminal:
+- Make sure the OCNE Desktop Agent is running.
+- Refresh the Terminal page after restarting the agent.
+
+Chat and calls:
+- Allow microphone, camera, and notification permissions in the browser.
+- For unreliable calls on strict networks, configure TURN credentials on the server.

@@ -1,0 +1,9 @@
+OCNE Quick Start
+
+1. Sign in to OCNE in your browser.
+2. Open Downloads and install the OCNE Desktop Agent for Windows.
+3. Open Terminal from the left sidebar and connect the desktop agent.
+4. Open Chat to message teammates, share files, and start one-to-one calls.
+5. Keep browser notifications enabled if you want call and message alerts.
+
+For local terminal access, keep the desktop agent running while using the website.

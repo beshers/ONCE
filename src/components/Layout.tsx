@@ -9,7 +9,7 @@ import {
   Globe,
   Trophy, Palette, Zap, GitBranch, Bookmark,
   Building2, Plug, FileText, Radio, Package, Rocket,
-  Bug, Key, Flame
+  Bug, Key, Flame, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -28,11 +28,11 @@ const navItems = [
   { icon: Code2, label: "Editor", path: "/editor" },
   { icon: Terminal, label: "Terminal", path: "/terminal" },
   { icon: MessageSquare, label: "Chat", path: "/chat" },
+  { icon: Download, label: "Downloads", path: "/downloads" },
   { icon: FileCode2, label: "Snippets", path: "/snippets" },
   { icon: Globe, label: "Social Feed", path: "/social" },
   { icon: Users, label: "Friends", path: "/friends" },
   { icon: Trophy, label: "Leaderboard", path: "/leaderboard" },
-  // New feature navigation items
   { icon: Code2, label: "Playground", path: "/playground" },
   { icon: Palette, label: "Whiteboard", path: "/whiteboard" },
   { icon: Zap, label: "Hackathons", path: "/hackathons" },
@@ -51,6 +51,13 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
+const navSections = [
+  { title: "Main", items: navItems.slice(0, 6) },
+  { title: "Community", items: navItems.slice(6, 10) },
+  { title: "Workspace", items: navItems.slice(10, -1) },
+  { title: "Account", items: navItems.slice(-1) },
+];
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -64,10 +71,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const initials = user?.name?.charAt(0)?.toUpperCase() || user?.username?.charAt(0)?.toUpperCase() || "U";
 
-  const NavItem = ({ icon: Icon, label, path }: { icon: typeof Home; label: string; path: string }) => {
+  const renderNavItem = ({ icon: Icon, label, path }: { icon: typeof Home; label: string; path: string }) => {
     const isActive = location.pathname === path || (path !== "/" && location.pathname.startsWith(path));
     return (
-      <TooltipProvider delayDuration={0}>
+      <TooltipProvider key={path} delayDuration={0}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
@@ -137,22 +144,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto">
-          <div className="text-[10px] uppercase text-slate-600 font-semibold px-3 py-2 tracking-wider">
-            {!collapsed && "Main"}
-          </div>
-          {navItems.slice(0, 5).map((item) => (
-            <NavItem key={item.path} {...item} />
+          {navSections.map((section) => (
+            <div key={section.title} className="space-y-1">
+              <div className="text-[10px] uppercase text-slate-600 font-semibold px-3 py-2 tracking-wider">
+                {!collapsed && section.title}
+              </div>
+              {section.items.map((item) => renderNavItem(item))}
+            </div>
           ))}
-          <div className="text-[10px] uppercase text-slate-600 font-semibold px-3 py-2 tracking-wider mt-4">
-            {!collapsed && "Community"}
-          </div>
-          {navItems.slice(5, 9).map((item) => (
-            <NavItem key={item.path} {...item} />
-          ))}
-          <div className="text-[10px] uppercase text-slate-600 font-semibold px-3 py-2 tracking-wider mt-4">
-            {!collapsed && "Account"}
-          </div>
-          <NavItem {...navItems[9]} />
           <button
             onClick={() => logout()}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full ${

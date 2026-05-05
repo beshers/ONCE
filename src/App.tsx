@@ -11,6 +11,7 @@ const ProjectsPage = lazy(() => import("./pages/ProjectsPage"))
 const EditorPage = lazy(() => import("./pages/EditorPage"))
 const TerminalPage = lazy(() => import("./pages/TerminalPage"))
 const ChatPage = lazy(() => import("./pages/ChatPage"))
+const DownloadsPage = lazy(() => import("./pages/DownloadsPage"))
 const SnippetsPage = lazy(() => import("./pages/SnippetsPage"))
 const SocialPage = lazy(() => import("./pages/SocialPage"))
 const FriendsPage = lazy(() => import("./pages/FriendsPage"))
@@ -68,6 +69,7 @@ export default function App() {
           <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
           <Route path="/local-agent" element={<AuthWrapper><LocalAgentPage /></AuthWrapper>} />
           <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
+          <Route path="/downloads" element={<AuthWrapper><DownloadsPage /></AuthWrapper>} />
           <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
           <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />
           <Route path="/friends" element={<AuthWrapper><FriendsPage /></AuthWrapper>} />

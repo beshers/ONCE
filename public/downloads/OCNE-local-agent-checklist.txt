@@ -1,0 +1,8 @@
+OCNE Local Agent Checklist
+
+- Install OCNE-Desktop-Agent-Setup.exe from the Downloads page.
+- Start the OCNE Desktop Agent after installation.
+- Keep the website open in the same browser profile you use to sign in.
+- Open Terminal and verify the agent status is connected.
+- If terminal access fails, restart the agent and refresh the Terminal page.
+- If your browser blocks local connections, allow localhost/private network access when prompted.
