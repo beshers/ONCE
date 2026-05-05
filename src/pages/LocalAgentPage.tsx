@@ -48,29 +48,46 @@ type RunResult = {
   };
 };
 
+type JsonRecord = Record<string, unknown>;
+
+type AuthUser = {
+  id?: string | number | null;
+  email?: string | null;
+  name?: string | null;
+  fullName?: string | null;
+  full_name?: string | null;
+  username?: string | null;
+};
+
 const DEFAULT_ENDPOINT = "http://127.0.0.1:48731";
 const EXPECTED_LOCAL_AGENT_VERSION = "0.5.1";
 const EXPECTED_DESKTOP_AGENT_VERSION = "0.4.0";
 const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
 const WINDOWS_AGENT_SHA256 = "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
+const AGENT_COMMAND_KEY = "ocne-agent-command";
+const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
 
-async function readJsonResponse(response: Response) {
+async function readJsonResponse<T extends object = JsonRecord>(response: Response): Promise<T> {
   const text = await response.text();
-  let data: any;
+  let data: JsonRecord;
   try {
-    data = JSON.parse(text);
+    const parsed = JSON.parse(text) as unknown;
+    data = parsed && typeof parsed === "object" ? parsed as JsonRecord : {};
   } catch {
     throw new Error(text || `Request failed with status ${response.status}`);
   }
 
   if (!response.ok) {
-    const error = new Error(data.error || `Request failed with status ${response.status}`);
+    const errorMessage = typeof data.error === "string" ? data.error : `Request failed with status ${response.status}`;
+    const error = new Error(errorMessage);
     (error as Error & { status?: number; code?: string }).status = response.status;
-    (error as Error & { status?: number; code?: string }).code = data.code;
+    if (typeof data.code === "string") {
+      (error as Error & { status?: number; code?: string }).code = data.code;
+    }
     throw error;
   }
 
-  return data;
+  return data as T;
 }
 
 function explainError(error: unknown) {
@@ -90,10 +107,11 @@ function explainError(error: unknown) {
 
 export default function LocalAgentPage() {
   const { user } = useAuth();
+  const authUser = user as AuthUser | null | undefined;
   const [endpoint, setEndpoint] = useState(() => localStorage.getItem("ocne-agent-endpoint") || DEFAULT_ENDPOINT);
   const [token, setToken] = useState(() => localStorage.getItem("ocne-agent-token") || "");
   const [stayConnected, setStayConnected] = useState(() => localStorage.getItem("ocne-agent-stay-connected") === "true");
-  const [command, setCommand] = useState("python --version");
+  const [command, setCommand] = useState(() => localStorage.getItem(AGENT_COMMAND_KEY) || "python --version");
   const [approval, setApproval] = useState("");
   const [health, setHealth] = useState<AgentHealth | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -114,18 +132,18 @@ export default function LocalAgentPage() {
   const isDesktopAgent = health?.name === "OCNE Desktop Agent";
   const requester = useMemo(() => {
     const name =
-      (typeof (user as any)?.fullName === "string" && (user as any).fullName) ||
-      (typeof (user as any)?.full_name === "string" && (user as any).full_name) ||
-      (typeof (user as any)?.name === "string" && (user as any).name) ||
-      (typeof (user as any)?.username === "string" && (user as any).username) ||
+      authUser?.fullName ||
+      authUser?.full_name ||
+      authUser?.name ||
+      authUser?.username ||
       "";
 
     return {
-      id: String((user as any)?.id || ""),
-      email: String((user as any)?.email || ""),
+      id: String(authUser?.id || ""),
+      email: String(authUser?.email || ""),
       name,
     };
-  }, [user]);
+  }, [authUser]);
 
   useEffect(() => {
     localStorage.setItem("ocne-agent-endpoint", endpoint.trim());
@@ -140,10 +158,25 @@ export default function LocalAgentPage() {
   }, [stayConnected]);
 
   useEffect(() => {
-    if (stayConnected) {
+    const applyEditorRunRequest = () => {
+      const requestedCommand = localStorage.getItem(AGENT_COMMAND_KEY);
+      if (requestedCommand) {
+        setCommand(requestedCommand);
+        setStatus("Run is ready. Connect the agent, approve if needed, then click Run approved command.");
+      }
+    };
+    window.addEventListener("ocne-agent-run-request", applyEditorRunRequest);
+    return () => window.removeEventListener("ocne-agent-run-request", applyEditorRunRequest);
+  }, []);
+
+  useEffect(() => {
+    const shouldAutoConnect = stayConnected || localStorage.getItem(AGENT_AUTOCONNECT_KEY) === "true";
+    if (shouldAutoConnect) {
+      localStorage.removeItem(AGENT_AUTOCONNECT_KEY);
       void connect({ remember: true, quiet: true });
     }
-    // Run once on mount so a saved connection can restore itself.
+    window.dispatchEvent(new Event("ocne-agent-run-request"));
+    // Run once on mount so a saved connection or editor Run request can restore itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -165,7 +198,7 @@ export default function LocalAgentPage() {
     }
 
     try {
-      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/pair`, {
+      const data = await readJsonResponse<AgentHealth>(await fetch(`${normalizedEndpoint}/pair`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -189,7 +222,7 @@ export default function LocalAgentPage() {
     setResult(null);
     setHealth(null);
     try {
-      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
+      const data = await readJsonResponse<AgentHealth>(await fetch(`${normalizedEndpoint}/health`, { cache: "no-store" }));
       let connectedData = data;
       setHealth(data);
       let pairFailedMessage = "";
@@ -268,7 +301,7 @@ export default function LocalAgentPage() {
         }
       }
 
-      const data = await readJsonResponse(await fetch(`${normalizedEndpoint}/run`, {
+      const data = await readJsonResponse<RunResult>(await fetch(`${normalizedEndpoint}/run`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

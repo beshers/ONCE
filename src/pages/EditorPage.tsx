@@ -98,6 +98,8 @@ type SaveIntent = "manual" | "auto" | "language";
 type SaveStatus = "saved" | "saving" | "unsaved" | "error";
 type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
+const AGENT_COMMAND_KEY = "ocne-agent-command";
+const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -327,6 +329,37 @@ export default function EditorPage() {
     : window.location.origin;
   const deviceQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(devicePreviewUrl)}`;
 
+  const detectRunCommand = () => {
+    const packageJson = (files || []).find((file) => file.type === "file" && file.name === "package.json");
+    if (packageJson?.content) {
+      try {
+        const manifest = JSON.parse(packageJson.content) as { scripts?: Record<string, string> };
+        if (manifest.scripts?.dev) return "npm run dev";
+        if (manifest.scripts?.start) return "npm start";
+        if (manifest.scripts?.preview) return "npm run preview";
+      } catch {
+        // Fall back to file-type commands when package.json is not valid JSON.
+      }
+    }
+
+    if (activeFile?.language === "python" || activeFile?.name.endsWith(".py")) {
+      return activeFile?.name ? `python "${activeFile.name}"` : "python --version";
+    }
+    if (activeFile?.language === "php" || activeFile?.name.endsWith(".php")) {
+      return activeFile?.name ? `php "${activeFile.name}"` : "php -v";
+    }
+    if (activeFile?.language === "javascript" || activeFile?.name.endsWith(".js")) {
+      return activeFile?.name ? `node "${activeFile.name}"` : "node --version";
+    }
+    if (activeFile?.language === "typescript" || activeFile?.name.endsWith(".ts")) {
+      return "npm run dev";
+    }
+    if (activeFile?.language === "html" || activeFile?.name.endsWith(".html")) {
+      return "npx http-server . -p 5173";
+    }
+    return "npm run dev";
+  };
+
   const setCode = (nextCode: string) => {
     if (!activeFileId) return;
     setDraftsByFileId((current) => ({ ...current, [activeFileId]: nextCode }));
@@ -479,11 +512,15 @@ export default function EditorPage() {
   const handleRun = () => {
     setActiveTab("local-agent");
     setDeviceBridgeOpen(true);
+    const command = detectRunCommand();
+    localStorage.setItem(AGENT_COMMAND_KEY, command);
+    localStorage.setItem(AGENT_AUTOCONNECT_KEY, "true");
+    window.dispatchEvent(new Event("ocne-agent-run-request"));
     if (activeFile && isModified && !saveFile.isPending) {
       void saveActiveFile("manual").catch(() => undefined);
     }
     if (project?.localFilesEnabled) {
-      toast.info("Open the Terminal Agent tab to connect the desktop agent and run commands on the device.");
+      toast.info(`Terminal Agent is ready to connect. Command prepared: ${command}`);
     } else {
       toast.info("Enable local files in Project Settings before running on a device.");
     }
