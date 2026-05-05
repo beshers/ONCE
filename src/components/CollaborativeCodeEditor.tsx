@@ -18,6 +18,8 @@ type CollaborativeCodeEditorProps = {
   minimapEnabled?: boolean;
   wordWrapEnabled?: boolean;
   onEditorReady?: (editor: Monaco.editor.IStandaloneCodeEditor | null) => void;
+  onCursorLineChange?: (line: number) => void;
+  onConnectionStatusChange?: (status: "solo" | "connecting" | "connected" | "disconnected") => void;
 };
 
 type EditorUser = {
@@ -53,6 +55,8 @@ export default function CollaborativeCodeEditor({
   minimapEnabled = false,
   wordWrapEnabled = false,
   onEditorReady,
+  onCursorLineChange,
+  onConnectionStatusChange,
 }: CollaborativeCodeEditorProps) {
   const { user } = useAuth({ requireAuth: false });
   const bindingRef = useRef<MonacoBinding | null>(null);
@@ -118,7 +122,8 @@ export default function CollaborativeCodeEditor({
     ydocRef.current = null;
     syncedRef.current = false;
     onEditorReady?.(null);
-  }, [onEditorReady]);
+    onConnectionStatusChange?.("disconnected");
+  }, [onConnectionStatusChange, onEditorReady]);
 
   useEffect(() => cleanup, [cleanup]);
 
@@ -126,11 +131,17 @@ export default function CollaborativeCodeEditor({
     cleanup();
     monaco.editor.setTheme("vs-dark");
     onEditorReady?.(editor as Monaco.editor.IStandaloneCodeEditor);
+    onCursorLineChange?.(editor.getPosition()?.lineNumber || 1);
+    editor.onDidChangeCursorPosition((event) => {
+      onCursorLineChange?.(event.position.lineNumber);
+    });
 
     if (!collaborationEnabled) {
+      onConnectionStatusChange?.("solo");
       return;
     }
 
+    onConnectionStatusChange?.("connecting");
     const ydoc = new Y.Doc();
     const yText = ydoc.getText("monaco");
     const provider = new WebsocketProvider(collabUrl(), roomName, ydoc, {
@@ -146,12 +157,16 @@ export default function CollaborativeCodeEditor({
 
     provider.on("sync", (isSynced: boolean) => {
       if (!isSynced || syncedRef.current) return;
+      onConnectionStatusChange?.("connected");
       syncedRef.current = true;
       if (yText.length === 0 && valueRef.current) {
         ydoc.transact(() => {
           yText.insert(0, valueRef.current);
         }, "ocne-initial-content");
       }
+    });
+    provider.on("status", (event: { status: "connecting" | "connected" | "disconnected" }) => {
+      onConnectionStatusChange?.(event.status);
     });
 
     const model = editor.getModel();

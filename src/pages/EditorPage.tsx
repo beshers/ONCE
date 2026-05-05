@@ -64,6 +64,7 @@ type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
 type SaveIntent = "manual" | "auto" | "language";
 type SaveStatus = "saved" | "saving" | "unsaved" | "error";
+type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 
 export default function EditorPage() {
@@ -94,6 +95,7 @@ export default function EditorPage() {
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [minimapEnabled, setMinimapEnabled] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(14);
+  const [collaborationStatus, setCollaborationStatus] = useState<CollaborationStatus>("solo");
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const saveIntentRef = useRef<SaveIntent>("manual");
@@ -181,6 +183,15 @@ export default function EditorPage() {
     },
   });
 
+  const updateReviewStatus = trpc.review.updateStatus.useMutation({
+    onSuccess: () => {
+      utils.review.list.invalidate({ fileId: activeFileId! });
+    },
+    onError: (error) => {
+      toast.error(error.message || "Could not update this thread.");
+    },
+  });
+
   const deleteFile = trpc.project.fileDelete.useMutation({
     onSuccess: () => {
       toast.success("File deleted!");
@@ -245,6 +256,9 @@ export default function EditorPage() {
   const liveUsers = liveState?.users || [];
   const liveActivity = liveState?.activity || [];
   const followedUser = liveUsers.find((user) => user.userId === followUserId);
+  const openReviews = (reviews || []).filter((item) => item.review.status === "open").length;
+  const latestVersion = versions?.[0];
+  const collaborationEnabled = Boolean(project?.collaborationMode && project.collaborationMode !== "solo");
   const canShowPreview = ["html", "css", "javascript"].includes(activeFile?.language || "");
   const previewDocument = activeFile?.language === "html"
     ? code
@@ -354,6 +368,12 @@ export default function EditorPage() {
     saving: "Saving...",
     unsaved: "Unsaved changes",
     error: "Save failed",
+  };
+  const collaborationStatusText: Record<CollaborationStatus, string> = {
+    solo: "Solo editor",
+    connecting: "Connecting",
+    connected: "CRDT synced",
+    disconnected: "Offline",
   };
 
   const handleFormatDocument = () => {
@@ -912,11 +932,13 @@ export default function EditorPage() {
                     language={activeFile.language || "plaintext"}
                     value={code}
                     onChange={setCode}
-                    collaborationEnabled={Boolean(project?.collaborationMode && project.collaborationMode !== "solo")}
+                    collaborationEnabled={collaborationEnabled}
                     fontSize={editorFontSize}
                     minimapEnabled={minimapEnabled}
                     wordWrapEnabled={wordWrapEnabled}
                     onEditorReady={handleEditorReady}
+                    onCursorLineChange={setReviewLineStart}
+                    onConnectionStatusChange={setCollaborationStatus}
                   />
                 </div>
               ) : (
@@ -960,9 +982,21 @@ export default function EditorPage() {
             <div className="border-b border-white/10 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">Live room</div>
-                <Badge className={project?.collaborationMode === "solo" ? "bg-slate-500/10 text-slate-300" : "bg-emerald-500/10 text-emerald-300"}>
-                  <Radio className="mr-1 h-3 w-3" /> {liveUsers.length} online
+                <Badge className={collaborationStatus === "connected" ? "bg-emerald-500/10 text-emerald-300" : collaborationStatus === "connecting" ? "bg-amber-500/10 text-amber-300" : "bg-slate-500/10 text-slate-300"}>
+                  <Radio className="mr-1 h-3 w-3" /> {collaborationStatusText[collaborationStatus]}
                 </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {[
+                  ["Online", String(liveUsers.length)],
+                  ["Threads", String(openReviews)],
+                  ["Version", latestVersion ? `v${latestVersion.versionNumber}` : "v0"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-slate-600">{label}</div>
+                    <div className="mt-1 truncate text-xs font-semibold text-white">{value}</div>
+                  </div>
+                ))}
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button size="sm" variant="ghost" className="border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => toast.info("Voice rooms need a WebRTC/SFU provider before real calls can start.")}>
@@ -1205,6 +1239,38 @@ export default function EditorPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-slate-300">{r.review.content}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {r.review.status !== "resolved" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 border border-emerald-500/20 px-2 text-xs text-emerald-300 hover:bg-emerald-500/10"
+                          onClick={() => updateReviewStatus.mutate({ id: r.review.id, status: "resolved" })}
+                        >
+                          Resolve
+                        </Button>
+                      )}
+                      {r.review.status !== "open" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 border border-cyan-500/20 px-2 text-xs text-cyan-300 hover:bg-cyan-500/10"
+                          onClick={() => updateReviewStatus.mutate({ id: r.review.id, status: "open" })}
+                        >
+                          Reopen
+                        </Button>
+                      )}
+                      {r.review.status !== "dismissed" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 border border-white/10 px-2 text-xs text-slate-300 hover:bg-white/10"
+                          onClick={() => updateReviewStatus.mutate({ id: r.review.id, status: "dismissed" })}
+                        >
+                          Dismiss
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

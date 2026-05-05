@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { incrementUserStats } from "./queries/user-stats";
-import { codeReviews, users, projectFiles, projects } from "@db/schema";
+import { codeReviews, users, projectFiles, projects, projectCollaborators } from "@db/schema";
 import { eq, and, desc } from "drizzle-orm";
 
 export const reviewRouter = createRouter({
@@ -14,7 +14,10 @@ export const reviewRouter = createRouter({
       if (!file) throw new Error("File not found");
       const [project] = await db.select().from(projects).where(eq(projects.id, file.projectId));
       const hasAccess = project.isPublic || project.ownerId === ctx.user.id || !!(await db.query.projectCollaborators.findFirst({
-        where: and(eq(projects.id, file.projectId)),
+        where: and(
+          eq(projectCollaborators.projectId, file.projectId),
+          eq(projectCollaborators.userId, ctx.user.id),
+        ),
       }));
       if (!hasAccess) throw new Error("Access denied");
       const rows = await db.select({
@@ -38,6 +41,17 @@ export const reviewRouter = createRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      const [file] = await db.select().from(projectFiles).where(eq(projectFiles.id, input.fileId));
+      if (!file || file.projectId !== input.projectId) throw new Error("File not found");
+      const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
+      if (!project) throw new Error("Project not found");
+      const canComment = project.isPublic || project.ownerId === ctx.user.id || !!(await db.query.projectCollaborators.findFirst({
+        where: and(
+          eq(projectCollaborators.projectId, input.projectId),
+          eq(projectCollaborators.userId, ctx.user.id),
+        ),
+      }));
+      if (!canComment) throw new Error("Access denied");
       const [{ id }] = await db.insert(codeReviews).values({
         projectId: input.projectId,
         fileId: input.fileId,
@@ -60,8 +74,8 @@ export const reviewRouter = createRouter({
       const [project] = await db.select().from(projects).where(eq(projects.id, review.projectId));
       const canModify = project.ownerId === ctx.user.id || review.userId === ctx.user.id || !!(await db.query.projectCollaborators.findFirst({
         where: and(
-          eq(projects.id, review.projectId),
-          eq(users.id, ctx.user.id),
+          eq(projectCollaborators.projectId, review.projectId),
+          eq(projectCollaborators.userId, ctx.user.id),
         ),
       }));
       if (!canModify) throw new Error("Access denied");
