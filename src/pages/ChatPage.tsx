@@ -1716,6 +1716,8 @@ export default function ChatPage() {
     const cleanupRemoteStream = remoteStreamRef.current;
     const cleanupScreenTrack = pendingScreenTrackRef.current;
     const cleanupCallId = activeCallIdRef.current;
+    const cleanupRecipientId = directRecipientId;
+    const cleanupMode = callModeRef.current;
 
     cleanupPromiseRef.current = (async () => {
       stopRingtone();
@@ -1723,16 +1725,6 @@ export default function ChatPage() {
       if (missedCallTimerRef.current) {
         window.clearTimeout(missedCallTimerRef.current);
         missedCallTimerRef.current = null;
-      }
-      if (sendEndSignal && directRecipientId && cleanupCallId) {
-        await sendWebRTCSignal(".", {
-          kind: "call",
-          title: "Call ended",
-          action: "end",
-          callId: cleanupCallId,
-          mode: callModeRef.current,
-          targetUserId: directRecipientId,
-        }).catch(() => undefined);
       }
 
       if (cleanupPeerConnection) {
@@ -1808,6 +1800,26 @@ export default function ChatPage() {
       }
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(activeCallSessionKey);
+      }
+
+      if (sendEndSignal && cleanupRecipientId && cleanupCallId) {
+        const endSignal = sendMessage.mutateAsync({
+          content: ".",
+          receiverId: cleanupRecipientId,
+          messageType: "text",
+          metadata: JSON.stringify({
+            kind: "call",
+            title: "Call ended",
+            action: "end",
+            callId: cleanupCallId,
+            mode: cleanupMode,
+            targetUserId: cleanupRecipientId,
+          } satisfies EventMeta),
+        });
+        const timeout = new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 1500);
+        });
+        void Promise.race([endSignal.then(() => undefined).catch(() => undefined), timeout]);
       }
     })().finally(() => {
       cleanupPromiseRef.current = null;
