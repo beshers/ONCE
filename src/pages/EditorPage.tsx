@@ -275,6 +275,7 @@ export default function EditorPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [saveClockTick, setSaveClockTick] = useState(() => Date.now());
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [minimapEnabled, setMinimapEnabled] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(14);
@@ -593,6 +594,12 @@ export default function EditorPage() {
   }, [saveMessage]);
 
   useEffect(() => {
+    if (!lastSavedAt) return;
+    const timer = window.setInterval(() => setSaveClockTick(Date.now()), 5000);
+    return () => window.clearInterval(timer);
+  }, [lastSavedAt]);
+
+  useEffect(() => {
     return () => {
       editorSessionDisposablesRef.current.forEach((disposable) => disposable.dispose());
       editorSessionDisposablesRef.current = [];
@@ -871,23 +878,59 @@ export default function EditorPage() {
 
   // Line numbers for the textarea
   const lines = code.split("\n");
+  const formatRelativeSaveTime = (date: Date | null) => {
+    if (!date) return "";
+    const seconds = Math.max(0, Math.floor((saveClockTick - date.getTime()) / 1000));
+    if (seconds < 5) return "just now";
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
   const effectiveSaveStatus: SaveStatus = !isOnline
     ? "offline"
     : saveStatus === "restoring"
       ? "restoring"
       : saveStatus === "saving" || saveStatus === "queued"
     ? saveStatus
-    : isModified
-      ? saveStatus === "error" ? "error" : "unsaved"
-      : "saved";
+      : isModified
+        ? saveStatus === "error" ? "error" : "unsaved"
+        : "saved";
   const saveStatusText: Record<SaveStatus, string> = {
-    saved: lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
-    saving: "Saving...",
-    queued: "Save queued",
+    saved: lastSavedAt ? `Saved ${formatRelativeSaveTime(lastSavedAt)}` : "Saved",
+    saving: "Saving to database...",
+    queued: "Database sync queued",
     unsaved: "Unsaved changes",
     error: "Save failed",
     restoring: "Restoring from database",
     offline: "Offline - saved locally",
+  };
+  const saveStatusDetail: Record<SaveStatus, string> = {
+    saved: "Local cache and database are synced.",
+    saving: "Uploading the latest code to the database.",
+    queued: "A save is already running. The newest code will sync next.",
+    unsaved: "Saved locally. Database sync will run automatically.",
+    error: "Local draft is protected. Try saving again.",
+    restoring: "Loading the latest database version.",
+    offline: "Writing locally now. Database sync resumes online.",
+  };
+  const saveStatusPillClass: Record<SaveStatus, string> = {
+    saved: "border-emerald-400/25 bg-emerald-500/10 text-emerald-200",
+    saving: "border-cyan-400/25 bg-cyan-500/10 text-cyan-200",
+    queued: "border-amber-400/25 bg-amber-500/10 text-amber-200",
+    unsaved: "border-amber-400/25 bg-amber-500/10 text-amber-200",
+    error: "border-red-400/25 bg-red-500/10 text-red-200",
+    restoring: "border-cyan-400/25 bg-cyan-500/10 text-cyan-200",
+    offline: "border-amber-400/25 bg-amber-500/10 text-amber-200",
+  };
+  const saveStatusDotClass: Record<SaveStatus, string> = {
+    saved: "bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.85)]",
+    saving: "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.85)] animate-pulse",
+    queued: "bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.85)] animate-pulse",
+    unsaved: "bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.85)]",
+    error: "bg-red-300 shadow-[0_0_10px_rgba(252,165,165,0.85)]",
+    restoring: "bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.85)] animate-pulse",
+    offline: "bg-amber-300 shadow-[0_0_10px_rgba(252,211,77,0.85)]",
   };
   const collaborationStatusText: Record<CollaborationStatus, string> = {
     solo: "Solo editor",
@@ -1251,13 +1294,11 @@ export default function EditorPage() {
               <Badge variant="outline" className="border-white/10 text-slate-400 text-[10px] h-5">
                 {activeFile?.language || project?.language || "plaintext"}
               </Badge>
-              <span className={
-                effectiveSaveStatus === "saved"
-                  ? "text-emerald-400"
-                  : effectiveSaveStatus === "error"
-                    ? "text-red-400"
-                    : "text-amber-400"
-              }>
+              <span
+                title={saveStatusDetail[effectiveSaveStatus]}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${saveStatusPillClass[effectiveSaveStatus]}`}
+              >
+                <span className={`h-2 w-2 rounded-full ${saveStatusDotClass[effectiveSaveStatus]}`} />
                 {saveStatusText[effectiveSaveStatus]}
               </span>
               {project?.collaborationMode && project.collaborationMode !== "solo" && (
@@ -1295,10 +1336,14 @@ export default function EditorPage() {
             size="sm"
             onClick={handleSave}
             disabled={!activeFile}
-            className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+            className={`border hover:bg-white/10 ${
+              effectiveSaveStatus === "unsaved" || effectiveSaveStatus === "queued" || effectiveSaveStatus === "saving"
+                ? "border-cyan-400/25 text-cyan-300 hover:text-cyan-200"
+                : "border-emerald-400/20 text-emerald-300 hover:text-emerald-200"
+            }`}
           >
-            <span className="mr-1.5 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)] animate-pulse" />
-            {saveFile.isPending ? "Queue save" : "Save live"}
+            <span className={`mr-1.5 h-2.5 w-2.5 rounded-full ${saveStatusDotClass[effectiveSaveStatus]}`} />
+            {saveFile.isPending ? "Queue save" : isModified ? "Save now" : "Saved"}
           </Button>
           <Button
             variant="ghost"
@@ -1314,8 +1359,8 @@ export default function EditorPage() {
         </div>
       </div>
       {saveMessage && (
-        <div className="mb-3 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 shadow-lg shadow-emerald-950/20">
-          <span className="mr-2 inline-flex h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.8)]" />
+        <div className={`mb-3 rounded-xl border px-3 py-2 text-sm font-medium shadow-lg shadow-black/20 ${saveStatusPillClass[effectiveSaveStatus]}`}>
+          <span className={`mr-2 inline-flex h-2 w-2 rounded-full ${saveStatusDotClass[effectiveSaveStatus]}`} />
           {saveMessage}
         </div>
       )}
@@ -1826,13 +1871,11 @@ export default function EditorPage() {
                 />
                 <span>{editorFontSize}px</span>
               </label>
-              <span className={
-                effectiveSaveStatus === "saved"
-                  ? "text-emerald-400"
-                  : effectiveSaveStatus === "error"
-                    ? "text-red-400"
-                    : "text-amber-400"
-              }>
+              <span
+                title={saveStatusDetail[effectiveSaveStatus]}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-semibold ${saveStatusPillClass[effectiveSaveStatus]}`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${saveStatusDotClass[effectiveSaveStatus]}`} />
                 {saveStatusText[effectiveSaveStatus]}
               </span>
             </div>
