@@ -35,31 +35,130 @@ function draftStorageKey(projectId: number, fileId: number) {
   return `ocne:project:${projectId}:file:${fileId}:draft`;
 }
 
-function readStoredDraft(projectId: number | undefined, fileId: number | null) {
+type StoredEditorDraft = {
+  content: string;
+  savedAt: number;
+  isDirty: boolean;
+};
+
+const EDITOR_CACHE_DB = "ocne_editor_cache";
+const EDITOR_CACHE_STORE = "drafts";
+const EDITOR_CACHE_VERSION = 1;
+
+function parseStoredDraft(raw: string | null): StoredEditorDraft | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredEditorDraft>;
+    if (typeof parsed.content === "string") {
+      return {
+        content: parsed.content,
+        savedAt: typeof parsed.savedAt === "number" ? parsed.savedAt : 0,
+        isDirty: parsed.isDirty !== false,
+      };
+    }
+  } catch {
+    return { content: raw, savedAt: 0, isDirty: true };
+  }
+  return null;
+}
+
+function openEditorCache() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB unavailable"));
+      return;
+    }
+    const request = indexedDB.open(EDITOR_CACHE_DB, EDITOR_CACHE_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(EDITOR_CACHE_STORE)) {
+        db.createObjectStore(EDITOR_CACHE_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readIndexedDraft(projectId: number | undefined, fileId: number | null) {
   if (!projectId || !fileId) return null;
   try {
-    return localStorage.getItem(draftStorageKey(projectId, fileId));
+    const db = await openEditorCache();
+    const key = draftStorageKey(projectId, fileId);
+    return await new Promise<StoredEditorDraft | null>((resolve, reject) => {
+      const request = db.transaction(EDITOR_CACHE_STORE).objectStore(EDITOR_CACHE_STORE).get(key);
+      request.onsuccess = () => resolve(parseStoredDraft(JSON.stringify(request.result ?? null)));
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    return readStoredDraftEntry(projectId, fileId);
+  }
+}
+
+async function writeIndexedDraft(key: string, draft: StoredEditorDraft) {
+  try {
+    const db = await openEditorCache();
+    await new Promise<void>((resolve, reject) => {
+      const request = db.transaction(EDITOR_CACHE_STORE, "readwrite").objectStore(EDITOR_CACHE_STORE).put(draft, key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    // localStorage is kept as the synchronous fallback.
+  }
+}
+
+async function clearIndexedDraft(key: string) {
+  try {
+    const db = await openEditorCache();
+    await new Promise<void>((resolve, reject) => {
+      const request = db.transaction(EDITOR_CACHE_STORE, "readwrite").objectStore(EDITOR_CACHE_STORE).delete(key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  } catch {
+    // Nothing to clear when IndexedDB is unavailable.
+  }
+}
+
+function readStoredDraftEntry(projectId: number | undefined, fileId: number | null) {
+  if (!projectId || !fileId) return null;
+  try {
+    return parseStoredDraft(localStorage.getItem(draftStorageKey(projectId, fileId)));
   } catch {
     return null;
   }
 }
 
-function writeStoredDraft(projectId: number | undefined, fileId: number | null, code: string) {
+function readStoredDraft(projectId: number | undefined, fileId: number | null) {
+  return readStoredDraftEntry(projectId, fileId)?.content ?? null;
+}
+
+function writeStoredDraft(projectId: number | undefined, fileId: number | null, code: string, isDirty = true) {
   if (!projectId || !fileId) return;
+  const key = draftStorageKey(projectId, fileId);
+  const draft: StoredEditorDraft = {
+    content: code,
+    savedAt: Date.now(),
+    isDirty,
+  };
   try {
-    localStorage.setItem(draftStorageKey(projectId, fileId), code);
+    localStorage.setItem(key, JSON.stringify(draft));
   } catch {
     // The live save still works when browser storage is unavailable.
   }
+  void writeIndexedDraft(key, draft);
 }
 
 function clearStoredDraft(projectId: number | undefined, fileId: number | null) {
   if (!projectId || !fileId) return;
+  const key = draftStorageKey(projectId, fileId);
   try {
-    localStorage.removeItem(draftStorageKey(projectId, fileId));
+    localStorage.removeItem(key);
   } catch {
     // Nothing to clear if browser storage is unavailable.
   }
+  void clearIndexedDraft(key);
 }
 
 type StoredEditorSession = {
@@ -129,12 +228,12 @@ function writeEditorState(projectId: number | undefined, state: { fileId?: numbe
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
 type SaveIntent = "manual" | "auto" | "language";
-type SaveStatus = "saved" | "saving" | "queued" | "unsaved" | "error";
+type SaveStatus = "saved" | "saving" | "queued" | "unsaved" | "error" | "restoring" | "offline";
 type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 const AGENT_COMMAND_KEY = "ocne-agent-command";
 const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
-const DATABASE_AUTOSAVE_DELAY_MS = 800;
+const DATABASE_AUTOSAVE_DELAY_MS = 1500;
 const BACKGROUND_FILE_REFRESH_MS = 15000;
 
 export default function EditorPage() {
@@ -175,6 +274,7 @@ export default function EditorPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [saveMessage, setSaveMessage] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [minimapEnabled, setMinimapEnabled] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(14);
@@ -517,7 +617,7 @@ export default function EditorPage() {
     }
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       writeStoredDraft(projectId, activeFileId, code);
-      setSaveStatus("error");
+      setSaveStatus("offline");
       setSaveMessage("Offline draft saved in this browser. OCNE will sync when the network returns.");
       return;
     }
@@ -559,6 +659,21 @@ export default function EditorPage() {
   }, [activeFileId, saveActiveFile]);
 
   useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSaveStatus("offline");
+      setSaveMessage("Offline. OCNE is saving locally and will sync to the database when you reconnect.");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (saveFile.isPending || !queuedSaveIntentRef.current) return;
     const intent = queuedSaveIntentRef.current;
     queuedSaveIntentRef.current = null;
@@ -567,6 +682,54 @@ export default function EditorPage() {
     }
     void saveActiveFile(intent).catch(() => undefined);
   }, [activeFile, activeFileId, isModified, saveActiveFile, saveFile.isPending]);
+
+  useEffect(() => {
+    if (!activeFileId || !activeFile) return;
+    let cancelled = false;
+    const serverContent = activeFile.content || "";
+    const serverUpdatedAt = activeFile.updatedAt ? new Date(activeFile.updatedAt).getTime() : 0;
+    const syncTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      const localDraft = readStoredDraftEntry(projectId, activeFileId);
+      const localHasDifferentContent = Boolean(localDraft && localDraft.content !== serverContent);
+      const databaseIsNewer = Boolean(localDraft?.savedAt && serverUpdatedAt && serverUpdatedAt > localDraft.savedAt);
+
+      setSavedCodeByFileId((current) => current[activeFileId] === serverContent ? current : { ...current, [activeFileId]: serverContent });
+
+      if (localHasDifferentContent && databaseIsNewer) {
+        clearStoredDraft(projectId, activeFileId);
+        setDraftsByFileId((current) => {
+          const next = { ...current };
+          delete next[activeFileId];
+          return next;
+        });
+        setSaveStatus("saved");
+        setLastSavedAt(new Date(serverUpdatedAt));
+        setSaveMessage("Restored latest code from the database.");
+        return;
+      }
+
+      if (!localHasDifferentContent) {
+        clearStoredDraft(projectId, activeFileId);
+      }
+
+      setSaveStatus((status) => status === "restoring" ? "saved" : status);
+
+      void readIndexedDraft(projectId, activeFileId).then((indexedDraft) => {
+        if (cancelled || !indexedDraft || indexedDraft.content === serverContent) return;
+        const indexedIsNewer = !serverUpdatedAt || indexedDraft.savedAt >= serverUpdatedAt;
+        if (!indexedIsNewer) return;
+        setDraftsByFileId((current) => ({ ...current, [activeFileId]: indexedDraft.content }));
+        setSaveStatus(indexedDraft.isDirty ? "unsaved" : "saved");
+        setSaveMessage(indexedDraft.isDirty ? "Restored local draft. Database sync will continue automatically." : "");
+      });
+    }, 0);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(syncTimer);
+    };
+  }, [activeFile, activeFileId, projectId]);
 
   useEffect(() => {
     const persistCurrentDraft = () => {
@@ -692,7 +855,11 @@ export default function EditorPage() {
 
   // Line numbers for the textarea
   const lines = code.split("\n");
-  const effectiveSaveStatus: SaveStatus = saveStatus === "saving" || saveStatus === "queued"
+  const effectiveSaveStatus: SaveStatus = !isOnline
+    ? "offline"
+    : saveStatus === "restoring"
+      ? "restoring"
+      : saveStatus === "saving" || saveStatus === "queued"
     ? saveStatus
     : isModified
       ? saveStatus === "error" ? "error" : "unsaved"
@@ -703,6 +870,8 @@ export default function EditorPage() {
     queued: "Save queued",
     unsaved: "Unsaved changes",
     error: "Save failed",
+    restoring: "Restoring from database",
+    offline: "Offline - saved locally",
   };
   const collaborationStatusText: Record<CollaborationStatus, string> = {
     solo: "Solo editor",
