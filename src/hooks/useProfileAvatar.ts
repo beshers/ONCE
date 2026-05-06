@@ -25,5 +25,5 @@ export function useProfileAvatar(user?: { id?: string | null; avatar?: string | 
     () => null,
   );
 
-  return useMemo(() => localAvatar || user?.avatar || null, [localAvatar, user?.avatar]);
+  return useMemo(() => user?.avatar || localAvatar || null, [localAvatar, user?.avatar]);
 }

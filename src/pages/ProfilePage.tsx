@@ -237,12 +237,29 @@ export default function ProfilePage() {
 
     const dataUrl = await readFileAsDataUrl(file);
     const saved = setStoredProfileAvatar(user.id, dataUrl);
-    setMessage(saved ? "Profile photo updated on this device." : "The browser could not save this photo.");
+    setAvatarUrl(dataUrl);
     if (saved) {
       setShareIncludesPhoto(true);
       setSharePhotoUrl(dataUrl);
       setShareText(`${user.name || user.username || "I"} updated my OCNE profile photo.`);
-      setShareDialogOpen(true);
+      updateProfile.mutate({
+        name: name.trim() || user.name,
+        username: username.trim() || user.username,
+        bio: bio.trim(),
+        avatar: dataUrl,
+      });
+      setMessage("Profile photo saved to your account.");
+    } else {
+      setMessage("The browser could not save this photo locally, but OCNE will still save it to your account.");
+      setShareIncludesPhoto(true);
+      setSharePhotoUrl(dataUrl);
+      setShareText(`${user.name || user.username || "I"} updated my OCNE profile photo.`);
+      updateProfile.mutate({
+        name: name.trim() || user.name,
+        username: username.trim() || user.username,
+        bio: bio.trim(),
+        avatar: dataUrl,
+      });
     }
   };
 

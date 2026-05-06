@@ -32,7 +32,7 @@ export const userRouter = createRouter({
       name: z.string().optional(),
       username: z.string().optional(),
       bio: z.string().optional(),
-      avatar: z.string().optional(),
+      avatar: z.string().max(2_000_000).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();

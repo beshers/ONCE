@@ -10,7 +10,7 @@ const userColumns = [
   ["full_name", "VARCHAR(100) NULL AFTER password_hash"],
   ["first_name", "VARCHAR(50) NULL AFTER full_name"],
   ["last_name", "VARCHAR(50) NULL AFTER first_name"],
-  ["avatar", "VARCHAR(255) NULL AFTER last_name"],
+  ["avatar", "MEDIUMTEXT NULL AFTER last_name"],
   ["bio", "TEXT NULL AFTER avatar"],
   ["programming_languages", "TEXT NULL AFTER bio"],
   ["role", "ENUM('user','admin') NOT NULL DEFAULT 'user' AFTER programming_languages"],
@@ -381,6 +381,7 @@ async function ensureUsersSchema() {
     `);
     await connection.query("ALTER TABLE users MODIFY username VARCHAR(50) NOT NULL");
     await connection.query("ALTER TABLE users MODIFY full_name VARCHAR(100) NOT NULL");
+    await connection.query("ALTER TABLE users MODIFY avatar MEDIUMTEXT NULL");
     await ensureCoreTables(connection);
   } finally {
     await connection.end();
