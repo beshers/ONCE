@@ -10,6 +10,7 @@ export const socialRouter = createRouter({
     const db = getDb();
     const rows = await db.select({
       post: socialPosts,
+      imageUrl: sql<string | null>`social_posts.image_url`,
       author: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
     }).from(socialPosts)
       .leftJoin(users, eq(socialPosts.userId, users.id))
@@ -40,6 +41,7 @@ export const socialRouter = createRouter({
 
     const rows = await db.select({
       post: socialPosts,
+      imageUrl: sql<string | null>`social_posts.image_url`,
       author: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
     }).from(socialPosts)
       .leftJoin(users, eq(socialPosts.userId, users.id))
@@ -53,16 +55,21 @@ export const socialRouter = createRouter({
     .input(z.object({
       content: z.string().min(1),
       codeSnippet: z.string().optional(),
+      imageUrl: z.string().max(2_000_000).optional(),
       language: z.string().optional(),
       projectId: z.number().optional(),
       isPublic: z.boolean().default(true),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
+      const { imageUrl, ...postInput } = input;
       const [{ id }] = await db.insert(socialPosts).values({
         userId: ctx.user.id,
-        ...input,
+        ...postInput,
       }).$returningId();
+      if (imageUrl) {
+        await db.execute(sql`UPDATE social_posts SET image_url = ${imageUrl} WHERE id = ${id}`);
+      }
       const favoriteRows = await db
         .select({
           requesterId: friends.requesterId,

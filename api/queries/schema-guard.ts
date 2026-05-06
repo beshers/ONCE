@@ -227,6 +227,7 @@ const coreTableSql = [
     user_id VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     code_snippet TEXT DEFAULT NULL,
+    image_url MEDIUMTEXT DEFAULT NULL,
     language VARCHAR(50) DEFAULT NULL,
     project_id INT DEFAULT NULL,
     likes INT NOT NULL DEFAULT 0,
@@ -325,6 +326,7 @@ async function ensureCoreTables(connection: mysql.Connection) {
 
   await ensureTableColumn(connection, "friends", "is_favorite_by_requester", "TINYINT(1) NOT NULL DEFAULT 0");
   await ensureTableColumn(connection, "friends", "is_favorite_by_addressee", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureTableColumn(connection, "social_posts", "image_url", "MEDIUMTEXT DEFAULT NULL AFTER code_snippet");
 
   for (const [column, definition] of projectColumns) {
     await ensureTableColumn(connection, "projects", column, definition);

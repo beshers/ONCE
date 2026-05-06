@@ -8,6 +8,8 @@ import {
   Download,
   FileCode2,
   FolderOpen,
+  Globe2,
+  Lock,
   Mail,
   MessageSquare,
   Music,
@@ -15,7 +17,9 @@ import {
   Rocket,
   Save,
   Sparkles,
+  UserCheck,
   UserRound,
+  Users,
   Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +53,42 @@ const MAX_RINGTONE_BYTES = 3 * 1024 * 1024;
 
 const firstWelcomeKey = (userId: string) => `ocne_profile_first_welcome_${userId}`;
 const onboardingSeenKey = (userId: string) => `ocne_profile_onboarding_seen_${userId}`;
+const photoVisibilityKey = (userId: string) => `ocne_profile_photo_visibility_${userId}`;
+const selectedPhotoFriendsKey = (userId: string) => `ocne_profile_photo_selected_friends_${userId}`;
+
+type ProfilePhotoVisibility = "everyone" | "friends" | "selected" | "private";
+
+const visibilityOptions: Array<{
+  value: ProfilePhotoVisibility;
+  label: string;
+  description: string;
+  icon: typeof Globe2;
+}> = [
+  { value: "everyone", label: "All users", description: "Your profile photo can be shown around OCNE.", icon: Globe2 },
+  { value: "friends", label: "Friends", description: "Keep the photo for accepted friends.", icon: Users },
+  { value: "selected", label: "Selected friends", description: "Choose exactly who should see it.", icon: UserCheck },
+  { value: "private", label: "Only me", description: "Keep the photo private on this device.", icon: Lock },
+];
+
+function loadPhotoVisibility(userId?: string | null): ProfilePhotoVisibility {
+  if (!userId || typeof window === "undefined") return "everyone";
+  try {
+    const stored = localStorage.getItem(photoVisibilityKey(userId));
+    return visibilityOptions.some((option) => option.value === stored) ? (stored as ProfilePhotoVisibility) : "everyone";
+  } catch {
+    return "everyone";
+  }
+}
+
+function loadSelectedPhotoFriends(userId?: string | null) {
+  if (!userId || typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(selectedPhotoFriendsKey(userId)) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function formatDate(value?: Date | string | null) {
   if (!value) return "Not yet";
@@ -84,6 +124,10 @@ export default function ProfilePage() {
   const [ringtoneError, setRingtoneError] = useState<string | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareText, setShareText] = useState("");
+  const [sharePhotoUrl, setSharePhotoUrl] = useState<string | null>(null);
+  const [shareIncludesPhoto, setShareIncludesPhoto] = useState(false);
+  const [photoVisibility, setPhotoVisibility] = useState<ProfilePhotoVisibility>(() => loadPhotoVisibility(user?.id));
+  const [selectedPhotoFriendIds, setSelectedPhotoFriendIds] = useState<string[]>(() => loadSelectedPhotoFriends(user?.id));
   const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
   const initials = getUserInitial(user);
@@ -94,6 +138,7 @@ export default function ProfilePage() {
   const { data: activity = [] } = trpc.activity.recent.useQuery();
   const { data: projects } = trpc.project.list.useQuery();
   const { data: snippets = [] } = trpc.snippet.list.useQuery();
+  const { data: friends = [] } = trpc.friend.list.useQuery(undefined, { enabled: !!user?.id });
 
   const showFirstWelcome = useMemo(() => {
     if (!user?.id || welcomeDismissed || typeof window === "undefined") return false;
@@ -112,10 +157,14 @@ export default function ProfilePage() {
     [projects],
   );
 
+  const acceptedFriends = useMemo(
+    () => friends.filter((friend) => friend.status === "accepted" && friend.user?.id),
+    [friends],
+  );
+
   const updateProfile = trpc.user.updateProfile.useMutation({
     onSuccess: async () => {
       setMessage("Profile saved.");
-      setShareText(`${user?.name || user?.username || "I"} updated my OCNE profile.`);
       setShareDialogOpen(true);
       await utils.auth.me.invalidate();
       await utils.user.me.invalidate();
@@ -126,8 +175,10 @@ export default function ProfilePage() {
 
   const shareProfileUpdate = trpc.social.createPost.useMutation({
     onSuccess: async () => {
-      await utils.social.feed.invalidate();
+      await Promise.all([utils.social.feed.invalidate(), utils.social.favoriteFeed.invalidate()]);
       setShareDialogOpen(false);
+      setSharePhotoUrl(null);
+      setShareIncludesPhoto(false);
       toast.success("Shared to the social feed.");
     },
     onError: (error) => toast.error(error.message || "Could not share this update."),
@@ -135,12 +186,38 @@ export default function ProfilePage() {
 
   const handleSave = () => {
     if (!user) return;
+    const nextAvatarUrl = avatarUrl.trim();
+    const photoChanged = !!nextAvatarUrl && nextAvatarUrl !== (user.avatar || "");
+    setShareIncludesPhoto(photoChanged);
+    setSharePhotoUrl(photoChanged ? nextAvatarUrl : null);
+    setShareText(
+      photoChanged
+        ? `${user.name || user.username || "I"} updated my OCNE profile photo.`
+        : `${user.name || user.username || "I"} updated my OCNE profile.`,
+    );
     updateProfile.mutate({
       name: name.trim() || user.name,
       username: username.trim() || user.username,
       bio: bio.trim(),
-      avatar: avatarUrl.trim(),
+      avatar: nextAvatarUrl,
     });
+  };
+
+  const handleSavePhotoVisibility = () => {
+    if (!user?.id) return;
+    try {
+      localStorage.setItem(photoVisibilityKey(user.id), photoVisibility);
+      localStorage.setItem(selectedPhotoFriendsKey(user.id), JSON.stringify(selectedPhotoFriendIds));
+      setMessage("Profile photo visibility saved.");
+    } catch {
+      setMessage("The browser could not save the profile photo visibility.");
+    }
+  };
+
+  const toggleSelectedPhotoFriend = (friendId: string) => {
+    setSelectedPhotoFriendIds((current) =>
+      current.includes(friendId) ? current.filter((id) => id !== friendId) : [...current, friendId],
+    );
   };
 
   const handlePhotoChange = async (file?: File) => {
@@ -162,6 +239,8 @@ export default function ProfilePage() {
     const saved = setStoredProfileAvatar(user.id, dataUrl);
     setMessage(saved ? "Profile photo updated on this device." : "The browser could not save this photo.");
     if (saved) {
+      setShareIncludesPhoto(true);
+      setSharePhotoUrl(dataUrl);
       setShareText(`${user.name || user.username || "I"} updated my OCNE profile photo.`);
       setShareDialogOpen(true);
     }
@@ -170,6 +249,8 @@ export default function ProfilePage() {
   const handleRemoveLocalPhoto = () => {
     if (!user) return;
     setStoredProfileAvatar(user.id, null);
+    setSharePhotoUrl(null);
+    setShareIncludesPhoto(false);
     setMessage("Local profile photo removed.");
   };
 
@@ -253,20 +334,43 @@ export default function ProfilePage() {
           <DialogHeader>
             <DialogTitle>Share this profile update?</DialogTitle>
             <DialogDescription className="text-slate-400">
-              Post a short update to the social feed so other developers can see what changed.
+              Post a short update to the public social feed so other developers can see what changed.
             </DialogDescription>
           </DialogHeader>
+          {shareIncludesPhoto && sharePhotoUrl && (
+            <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+              <img src={sharePhotoUrl} alt="New profile photo preview" className="max-h-72 w-full object-cover" />
+            </div>
+          )}
           <Textarea
             value={shareText}
             onChange={(event) => setShareText(event.target.value)}
             className="min-h-24 border-white/10 bg-white/5 text-slate-100"
           />
+          {shareIncludesPhoto && photoVisibility !== "everyone" && (
+            <p className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-100">
+              Your profile photo visibility is limited, but social feed posts are public. Share only if this photo can be seen by everyone.
+            </p>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShareDialogOpen(false)} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShareDialogOpen(false);
+                setSharePhotoUrl(null);
+                setShareIncludesPhoto(false);
+              }}
+              className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+            >
               Not Now
             </Button>
             <Button
-              onClick={() => shareProfileUpdate.mutate({ content: shareText.trim() })}
+              onClick={() =>
+                shareProfileUpdate.mutate({
+                  content: shareText.trim(),
+                  imageUrl: shareIncludesPhoto ? sharePhotoUrl || undefined : undefined,
+                })
+              }
               disabled={!shareText.trim() || shareProfileUpdate.isPending}
               className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
             >
@@ -413,6 +517,83 @@ export default function ProfilePage() {
                 <Button onClick={handleSave} disabled={updateProfile.isPending} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
                   <Save className="mr-2 h-4 w-4" />
                   {updateProfile.isPending ? "Saving..." : "Save Profile"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-lg border-white/10 bg-[#10101a] text-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCheck className="h-5 w-5 text-cyan-300" />
+                Profile Photo Visibility
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                {visibilityOptions.map((option) => {
+                  const Icon = option.icon;
+                  const selected = photoVisibility === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setPhotoVisibility(option.value)}
+                      className={`rounded-lg border p-4 text-left transition ${
+                        selected
+                          ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-100"
+                          : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className="h-5 w-5 text-cyan-300" />
+                        <span className="text-sm font-medium">{option.label}</span>
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {photoVisibility === "selected" && (
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-white">Selected friends</p>
+                    <span className="text-xs text-slate-500">{selectedPhotoFriendIds.length} selected</span>
+                  </div>
+                  <div className="grid max-h-72 gap-2 overflow-auto sm:grid-cols-2">
+                    {acceptedFriends.map((friend) => (
+                      <button
+                        key={friend.user!.id}
+                        type="button"
+                        onClick={() => toggleSelectedPhotoFriend(friend.user!.id)}
+                        className={`flex items-center gap-3 rounded-lg border p-2 text-left transition ${
+                          selectedPhotoFriendIds.includes(friend.user!.id)
+                            ? "border-cyan-400/60 bg-cyan-400/10"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        <UserAvatar user={friend.user} className="h-8 w-8" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-xs font-semibold text-white" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm text-slate-100">{friend.user?.name || friend.user?.username || "Friend"}</span>
+                          <span className="block truncate text-xs text-slate-500">@{friend.user?.username || "developer"}</span>
+                        </span>
+                      </button>
+                    ))}
+                    {acceptedFriends.length === 0 && (
+                      <p className="text-sm text-slate-500">Add accepted friends first, then choose who can see the photo.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-5 text-slate-500">
+                  When you change your photo, OCNE will ask before sharing it to the social feed. Feed posts are public.
+                </p>
+                <Button onClick={handleSavePhotoVisibility} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                  <Save className="mr-2 h-4 w-4" />
+                  Save Visibility
                 </Button>
               </div>
             </CardContent>

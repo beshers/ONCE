@@ -263,6 +263,17 @@ export default function SocialPage() {
 
                 <p className="mb-3 whitespace-pre-wrap text-sm leading-6 text-slate-300">{item.post.content}</p>
 
+                {item.imageUrl && (
+                  <div className="mb-3 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+                    <img
+                      src={item.imageUrl}
+                      alt="Shared profile update"
+                      className="max-h-[520px] w-full object-cover"
+                      loading="lazy"
+                    />
+                  </div>
+                )}
+
                 {item.post.codeSnippet && (
                   <div className="mb-3 rounded-lg border border-white/10 bg-[#0b0b12]">
                     <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
