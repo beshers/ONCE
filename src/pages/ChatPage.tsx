@@ -325,9 +325,11 @@ export default function ChatPage() {
   const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
   const callScreenMusicAudioRef = useRef<HTMLAudioElement | null>(null);
   const missedCallTimerRef = useRef<number | null>(null);
+  const callSetupTimerRef = useRef<number | null>(null);
   const isCleaningUpCallRef = useRef(false);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
   const outgoingCallPeerRef = useRef<string | null>(null);
+  const callSignalPeerRef = useRef<string | null>(null);
   const iceRestartAttemptsRef = useRef(0);
   const lastStatsSampleRef = useRef<StatsSample | null>(null);
   const lastRemoteHeartbeatRef = useRef<number | null>(null);
@@ -846,6 +848,10 @@ export default function ChatPage() {
       window.clearTimeout(missedCallTimerRef.current);
       missedCallTimerRef.current = null;
     }
+    if (callSetupTimerRef.current) {
+      window.clearTimeout(callSetupTimerRef.current);
+      callSetupTimerRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
@@ -863,6 +869,7 @@ export default function ChatPage() {
     });
     peerConnectionRef.current?.close();
     peerConnectionRef.current = null;
+    callSignalPeerRef.current = null;
 
     pendingScreenTrackRef.current?.stop();
     pendingScreenTrackRef.current = null;
@@ -879,6 +886,12 @@ export default function ChatPage() {
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(activeCallSessionKey);
     }
+  }
+
+  function clearCallSetupTimer() {
+    if (!callSetupTimerRef.current) return;
+    window.clearTimeout(callSetupTimerRef.current);
+    callSetupTimerRef.current = null;
   }
 
   function playRingtone(mode: "voice" | "video" | "screen") {
@@ -1027,6 +1040,7 @@ export default function ChatPage() {
     }
     activeCallIdRef.current = meta.callId;
     outgoingCallPeerRef.current = null;
+    callSignalPeerRef.current = senderId;
     setActiveRoom("global");
     setDirectRecipientId(senderId);
     setIncomingCall({
@@ -1060,6 +1074,7 @@ export default function ChatPage() {
       setIncomingCall(null);
       setCallState("idle");
       activeCallIdRef.current = null;
+      callSignalPeerRef.current = null;
       setActionError("Missed call.");
     }, 45_000);
   }
@@ -1246,6 +1261,60 @@ export default function ChatPage() {
     }, 3000);
     return () => window.clearInterval(timer);
   }, [callState]);
+
+  useEffect(() => {
+    clearCallSetupTimer();
+    if (!directRecipientId || !activeCallIdRef.current || (callState !== "outgoing" && callState !== "connecting")) {
+      return;
+    }
+
+    const callId = activeCallIdRef.current;
+    const targetUserId = callSignalPeerRef.current || directRecipientId;
+    const mode = callModeRef.current;
+    const timedOutState = callState;
+    callSetupTimerRef.current = window.setTimeout(() => {
+      if (activeCallIdRef.current !== callId) return;
+      if (timedOutState === "outgoing") {
+        setActionError("No answer. The call timed out.");
+        void sendMessage.mutateAsync({
+          content: `${mode} call missed`,
+          receiverId: targetUserId,
+          messageType: "text",
+          metadata: JSON.stringify({
+            kind: "call",
+            title: "Missed call",
+            action: "missed",
+            callId,
+            mode,
+            targetUserId,
+          } satisfies EventMeta),
+        }).catch(() => undefined);
+        void cleanupActiveCall(false);
+        return;
+      }
+
+      setActionError("Call setup timed out before media connected.");
+      void sendMessage.mutateAsync({
+        content: "Call setup failed",
+        receiverId: targetUserId,
+        messageType: "text",
+        metadata: JSON.stringify({
+          kind: "call",
+          title: "Call setup failed",
+          action: "failed",
+          callId,
+          mode,
+          targetUserId,
+          note: "The peer connection did not finish connecting in time.",
+        } satisfies EventMeta),
+      }).catch(() => undefined);
+      void cleanupActiveCall(false);
+    }, timedOutState === "outgoing" ? 60_000 : 45_000);
+
+    return clearCallSetupTimer;
+  // cleanupActiveCall reads current refs and is intentionally excluded from this watchdog.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callState, directRecipientId, sendMessage]);
 
   useEffect(() => {
     if (!user?.id || (callState !== "idle" && callState !== "outgoing")) return;
@@ -1640,8 +1709,8 @@ export default function ChatPage() {
     setCallStats({ quality, rttMs, packetLossPct, audioBitrateKbps, videoBitrateKbps, updatedAt: now });
   }
 
-  async function attemptIceRestart(pc: RTCPeerConnection, callId: string) {
-    if (!directRecipientId || activeCallIdRef.current !== callId) return;
+  async function attemptIceRestart(pc: RTCPeerConnection, callId: string, signalTargetId = callSignalPeerRef.current || directRecipientId) {
+    if (!signalTargetId || activeCallIdRef.current !== callId) return;
     if (iceRestartAttemptsRef.current >= 2) {
       setCallHealthMessage("ICE restart failed twice. Ending the call so both sides can retry cleanly.");
       await sendWebRTCSignal("Call connection failed", {
@@ -1650,9 +1719,9 @@ export default function ChatPage() {
         action: "failed",
         callId,
         mode: callModeRef.current,
-        targetUserId: directRecipientId,
+        targetUserId: signalTargetId,
         note: "WebRTC could not recover the media path after ICE restart attempts.",
-      }).catch(() => undefined);
+      }, signalTargetId).catch(() => undefined);
       await cleanupActiveCall(false);
       return;
     }
@@ -1669,16 +1738,16 @@ export default function ChatPage() {
         action: "offer",
         callId,
         mode: callModeRef.current,
-        targetUserId: directRecipientId,
+        targetUserId: signalTargetId,
         signalData: offer,
-      });
+      }, signalTargetId);
     } catch (error) {
       setCallHealthMessage(error instanceof Error ? error.message : "ICE restart failed.");
       await cleanupActiveCall(true);
     }
   }
 
-  function createPeerConnection(callId: string) {
+  function createPeerConnection(callId: string, signalTargetId = callSignalPeerRef.current || directRecipientId) {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.onconnectionstatechange = null;
       peerConnectionRef.current.oniceconnectionstatechange = null;
@@ -1698,7 +1767,7 @@ export default function ChatPage() {
     });
 
     pc.onicecandidate = (event) => {
-      if (!event.candidate || !directRecipientId) return;
+      if (!event.candidate || !signalTargetId) return;
       void sendWebRTCSignal(
         ".",
         {
@@ -1707,9 +1776,10 @@ export default function ChatPage() {
           action: "ice",
           callId,
           mode: callModeRef.current,
-          targetUserId: directRecipientId,
+          targetUserId: signalTargetId,
           signalData: event.candidate.toJSON(),
         },
+        signalTargetId,
       );
     };
 
@@ -1724,12 +1794,14 @@ export default function ChatPage() {
         attachStreamToVideo(remoteVideoRef.current, remoteStreamRef.current);
       }
       setHasRemoteStream(true);
+      clearCallSetupTimer();
       setCallState("connected");
     };
 
     pc.onconnectionstatechange = () => {
       setPeerConnectionState(pc.connectionState);
       if (pc.connectionState === "connected") {
+        clearCallSetupTimer();
         setCallState("connected");
         lastRemoteHeartbeatRef.current = Date.now();
         setCallHealthMessage("Peer connection established.");
@@ -1738,7 +1810,7 @@ export default function ChatPage() {
         setCallHealthMessage("The call connection was interrupted. Waiting for the browser to recover it.");
       }
       if (pc.connectionState === "failed") {
-        void attemptIceRestart(pc, callId);
+        void attemptIceRestart(pc, callId, signalTargetId || undefined);
       }
     };
 
@@ -1748,11 +1820,12 @@ export default function ChatPage() {
         setCallHealthMessage("Checking network path between both browsers...");
       }
       if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        clearCallSetupTimer();
         iceRestartAttemptsRef.current = 0;
         setCallHealthMessage("Media path is connected.");
       }
       if (pc.iceConnectionState === "failed") {
-        void attemptIceRestart(pc, callId);
+        void attemptIceRestart(pc, callId, signalTargetId || undefined);
       }
     };
 
@@ -1849,6 +1922,8 @@ export default function ChatPage() {
       setPeerConnectionState("new");
       setCallHealthMessage("Call ended. Start a new call when both sides are ready.");
       outgoingCallPeerRef.current = null;
+      callSignalPeerRef.current = null;
+      clearCallSetupTimer();
       iceRestartAttemptsRef.current = 0;
       lastRemoteHeartbeatRef.current = null;
       if (activeCallIdRef.current === cleanupCallId) {
@@ -1899,6 +1974,7 @@ export default function ChatPage() {
     const callId = crypto.randomUUID();
     activeCallIdRef.current = callId;
     outgoingCallPeerRef.current = targetUserId;
+    callSignalPeerRef.current = targetUserId;
     setActiveRoom("global");
     setDirectRecipientId(targetUserId);
     setMessageSearch("");
@@ -1908,26 +1984,31 @@ export default function ChatPage() {
     setIsCallOnHold(false);
     lastRemoteHeartbeatRef.current = null;
 
-    const stream = await ensureLocalStream(mode);
-    const pc = createPeerConnection(callId);
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+    try {
+      const stream = await ensureLocalStream(mode);
+      const pc = createPeerConnection(callId, targetUserId);
+      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-    await sendWebRTCSignal(
-      `${mode} call`,
-      {
-        kind: "call",
-        title: `${mode} call invitation`,
-        action: "offer",
-        callId,
-        mode,
+      await sendWebRTCSignal(
+        `${mode} call`,
+        {
+          kind: "call",
+          title: `${mode} call invitation`,
+          action: "offer",
+          callId,
+          mode,
+          targetUserId,
+          signalData: offer,
+        },
         targetUserId,
-        signalData: offer,
-      },
-      targetUserId,
-    );
+      );
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "The call could not start.");
+      await cleanupActiveCall(false);
+    }
   }
 
   async function acceptIncomingCall() {
@@ -1943,6 +2024,7 @@ export default function ChatPage() {
       }
       setActionError(null);
       activeCallIdRef.current = incomingCall.callId;
+      callSignalPeerRef.current = directRecipientId;
       const mediaMode = mediaModeForCall(incomingCall.mode);
       setCallMode(mediaMode);
       callModeRef.current = mediaMode;
@@ -1951,7 +2033,7 @@ export default function ChatPage() {
       lastRemoteHeartbeatRef.current = Date.now();
 
       const stream = await ensureLocalStream(mediaMode);
-      const pc = createPeerConnection(incomingCall.callId);
+      const pc = createPeerConnection(incomingCall.callId, directRecipientId);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
@@ -1981,21 +2063,25 @@ export default function ChatPage() {
 
   async function rejectIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
+    const rejectedCall = incomingCall;
+    const rejectedPeerId = directRecipientId;
     stopRingtone();
     if (missedCallTimerRef.current) {
       window.clearTimeout(missedCallTimerRef.current);
       missedCallTimerRef.current = null;
     }
-    await sendWebRTCSignal(".", {
+    setIncomingCall(null);
+    setCallState("idle");
+    activeCallIdRef.current = null;
+    callSignalPeerRef.current = null;
+    void sendWebRTCSignal(".", {
       kind: "call",
       title: "Call declined",
       action: "reject",
-      callId: incomingCall.callId,
-      mode: incomingCall.mode,
-      targetUserId: directRecipientId,
-    });
-    setIncomingCall(null);
-    setCallState("idle");
+      callId: rejectedCall.callId,
+      mode: rejectedCall.mode,
+      targetUserId: rejectedPeerId,
+    }, rejectedPeerId).catch(() => undefined);
   }
 
   async function rejectIncomingCallWithMessage() {
