@@ -86,8 +86,11 @@ export default function Login() {
   const registerMut = trpc.auth.register.useMutation({
     onSuccess: (data) => {
       if (data.success) {
+        if (data.user?.id) {
+          localStorage.setItem(`ocne_profile_first_welcome_${data.user.id}`, "true");
+        }
         utils.auth.me.invalidate();
-        window.location.href = "/";
+        window.location.href = "/profile?welcome=new";
       } else {
         setError(data.message || "Registration failed");
       }

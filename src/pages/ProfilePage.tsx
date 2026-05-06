@@ -3,13 +3,18 @@ import { Link } from "react-router";
 import {
   Activity,
   Camera,
+  CheckCircle2,
   Code2,
+  Download,
   FileCode2,
   FolderOpen,
   Mail,
+  MessageSquare,
   Music,
   RotateCcw,
+  Rocket,
   Save,
+  Sparkles,
   UserRound,
   Volume2,
 } from "lucide-react";
@@ -41,6 +46,9 @@ import { Textarea } from "@/components/ui/textarea";
 
 const MAX_LOCAL_AVATAR_BYTES = 1024 * 1024;
 const MAX_RINGTONE_BYTES = 3 * 1024 * 1024;
+
+const firstWelcomeKey = (userId: string) => `ocne_profile_first_welcome_${userId}`;
+const onboardingSeenKey = (userId: string) => `ocne_profile_onboarding_seen_${userId}`;
 
 function formatDate(value?: Date | string | null) {
   if (!value) return "Not yet";
@@ -76,14 +84,28 @@ export default function ProfilePage() {
   const [ringtoneError, setRingtoneError] = useState<string | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareText, setShareText] = useState("");
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
   const initials = getUserInitial(user);
   const hasLocalPhoto = !!getStoredProfileAvatar(user?.id);
+  const displayName = user?.name || user?.username || "Developer";
 
   const { data: stats, isLoading: statsLoading } = trpc.activity.dashboardStats.useQuery();
   const { data: activity = [] } = trpc.activity.recent.useQuery();
   const { data: projects } = trpc.project.list.useQuery();
   const { data: snippets = [] } = trpc.snippet.list.useQuery();
+
+  const showFirstWelcome = useMemo(() => {
+    if (!user?.id || welcomeDismissed || typeof window === "undefined") return false;
+    try {
+      const firstWelcomeRequested = localStorage.getItem(firstWelcomeKey(user.id)) === "true";
+      const onboardingSeen = localStorage.getItem(onboardingSeenKey(user.id)) === "true";
+      const queryRequested = new URLSearchParams(window.location.search).get("welcome") === "new";
+      return (firstWelcomeRequested || queryRequested) && !onboardingSeen;
+    } catch {
+      return false;
+    }
+  }, [user?.id, welcomeDismissed]);
 
   const recentProjects = useMemo(
     () => [...(projects?.owned || []), ...(projects?.collaborated || [])].slice(0, 6),
@@ -196,8 +218,36 @@ export default function ProfilePage() {
     setMessage(saved ? `${selected?.name || "OCNE ringtone"} selected for incoming calls.` : "The browser could not save this ringtone.");
   };
 
+  const finishFirstWelcome = () => {
+    if (!user?.id) return;
+    try {
+      localStorage.setItem(onboardingSeenKey(user.id), "true");
+      localStorage.removeItem(firstWelcomeKey(user.id));
+      if (window.location.search.includes("welcome=new")) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch {
+      // The animation can still close even if local storage is unavailable.
+    }
+    setWelcomeDismissed(true);
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      <style>{`
+        @keyframes ocneWelcomeIn {
+          from { opacity: 0; transform: translateY(14px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes ocneWelcomeGlow {
+          0%, 100% { box-shadow: 0 0 0 rgba(34, 211, 238, 0); }
+          50% { box-shadow: 0 0 34px rgba(34, 211, 238, 0.18); }
+        }
+        @keyframes ocneWelcomeStep {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
         <DialogContent className="border-white/10 bg-[#10101a] text-slate-100">
           <DialogHeader>
@@ -225,6 +275,65 @@ export default function ProfilePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {showFirstWelcome ? (
+        <section className="rounded-lg border border-cyan-400/25 bg-[#0b1220] p-5 text-slate-100" style={{ animation: "ocneWelcomeIn 420ms ease-out, ocneWelcomeGlow 2400ms ease-in-out infinite" }}>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <Badge className="w-fit bg-cyan-400/10 text-cyan-200 hover:bg-cyan-400/10">
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                First time in OCNE
+              </Badge>
+              <div>
+                <h1 className="text-2xl font-semibold text-white">Welcome, {displayName}.</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+                  Start with your profile, then create a project, open the editor, connect your desktop agent, and invite people when you are ready to build together.
+                </p>
+              </div>
+            </div>
+            <Button onClick={finishFirstWelcome} className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400 sm:w-auto">
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Start
+            </Button>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {[
+              { icon: UserRound, title: "Complete profile", text: "Add your photo, bio, and ringtone." },
+              { icon: FolderOpen, title: "Create project", text: "Open your first workspace." },
+              { icon: Code2, title: "Write code", text: "Use the editor and saved versions." },
+              { icon: MessageSquare, title: "Work together", text: "Chat, call, and share progress." },
+            ].map((item, index) => (
+              <div
+                key={item.title}
+                className="rounded-lg border border-white/10 bg-white/[0.04] p-4"
+                style={{ animation: `ocneWelcomeStep 360ms ease-out ${index * 90}ms both` }}
+              >
+                <item.icon className="mb-3 h-5 w-5 text-cyan-300" />
+                <p className="text-sm font-medium text-white">{item.title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{item.text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button asChild variant="outline" onClick={finishFirstWelcome} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
+              <Link to="/projects">
+                <Rocket className="mr-2 h-4 w-4" />
+                New Project
+              </Link>
+            </Button>
+            <Button asChild variant="outline" onClick={finishFirstWelcome} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
+              <Link to="/downloads">
+                <Download className="mr-2 h-4 w-4" />
+                Downloads
+              </Link>
+            </Button>
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-lg border border-white/10 bg-[#10101a] px-5 py-4" style={{ animation: "ocneWelcomeIn 360ms ease-out" }}>
+          <p className="text-lg font-semibold text-white">Welcome back, {displayName}.</p>
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-lg border border-white/10 bg-[#10101a]">
         <div className="h-28 bg-gradient-to-r from-cyan-500/30 via-slate-700/40 to-violet-500/30" />
