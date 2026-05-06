@@ -36,9 +36,11 @@ export default function ProjectsPage() {
   const utils = trpc.useUtils();
 
   const { data: projects, isLoading } = trpc.project.list.useQuery();
+  const { data: publicProjectRows, isLoading: publicProjectsLoading } = trpc.project.publicProjects.useQuery();
   const createProject = trpc.project.create.useMutation({
     onSuccess: () => {
       utils.project.list.invalidate();
+      utils.project.publicProjects.invalidate();
       setCreateOpen(false);
     },
   });
@@ -53,9 +55,19 @@ export default function ProjectsPage() {
     collaborationMode: "solo" as "solo" | "team" | "public",
   });
 
+  const publicProjects = (publicProjectRows || []).map((row) => ({
+    ...row.project,
+    owner: row.owner,
+    projectSource: "public" as const,
+  }));
+  const personalProjects = [
+    ...(projects?.owned || []).map((project) => ({ ...project, projectSource: "owned" as const })),
+    ...(projects?.collaborated || []).map((project) => ({ ...project, projectSource: "collaborated" as const })),
+  ];
+  const personalProjectIds = new Set(personalProjects.map((project) => project.id));
   const allProjects = [
-    ...(projects?.owned || []),
-    ...(projects?.collaborated || []),
+    ...personalProjects,
+    ...publicProjects.filter((project) => !personalProjectIds.has(project.id)),
   ];
 
   const filtered = search
@@ -203,7 +215,7 @@ export default function ProjectsPage() {
         />
       </div>
 
-      {isLoading ? (
+      {isLoading || publicProjectsLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="bg-[#13131f] border-white/5 h-40">
@@ -235,18 +247,28 @@ export default function ProjectsPage() {
                     {languageIcons[project.language || "plaintext"] || "📄"}
                   </div>
                   <div className="flex items-center gap-1">
-                    {project.isPublic ? (
-                      <Globe className="w-3 h-3 text-slate-600" />
-                    ) : (
-                      <Lock className="w-3 h-3 text-slate-600" />
-                    )}
+                  {project.isPublic ? (
+                    <Globe className="w-3 h-3 text-slate-600" />
+                  ) : (
+                    <Lock className="w-3 h-3 text-slate-600" />
+                  )}
                   </div>
                 </div>
                 <h3 className="text-sm font-semibold text-white mb-1 group-hover:text-cyan-400 transition-colors">
                   {project.name}
                 </h3>
                 <p className="text-xs text-slate-500 line-clamp-2 mb-3">{project.description || "No description"}</p>
+                {project.projectSource === "public" && (
+                  <div className="mb-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
+                    Public project by {project.owner?.name || project.owner?.username || "OCNE user"}
+                  </div>
+                )}
                 <div className="mb-3 flex flex-wrap gap-1.5">
+                  {project.projectSource !== "public" && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-slate-400">
+                      {project.projectSource === "owned" ? "Your project" : "Shared with you"}
+                    </span>
+                  )}
                   {project.aiAgentEnabled && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-200">
                       <Bot className="h-3 w-3" /> AI

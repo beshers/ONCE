@@ -328,6 +328,9 @@ export default function EditorPage() {
   const { data: allProjects } = trpc.project.list.useQuery(undefined, {
     enabled: !projectId,
   });
+  const { data: publicProjectRows } = trpc.project.publicProjects.useQuery(undefined, {
+    enabled: !projectId,
+  });
   const heartbeat = trpc.project.heartbeat.useMutation();
 
   const saveFile = trpc.project.fileUpdate.useMutation({
@@ -1250,6 +1253,15 @@ export default function EditorPage() {
   if (!projectId) {
     // Show project selector when no project ID
     const ownedProjects = allProjects?.owned || [];
+    const collaboratedProjects = allProjects?.collaborated || [];
+    const personalIds = new Set([...ownedProjects, ...collaboratedProjects].map((project) => project.id));
+    const visibleProjects = [
+      ...ownedProjects.map((project) => ({ ...project, projectSource: "owned" as const })),
+      ...collaboratedProjects.map((project) => ({ ...project, projectSource: "collaborated" as const })),
+      ...(publicProjectRows || [])
+        .filter((row) => !personalIds.has(row.project.id))
+        .map((row) => ({ ...row.project, owner: row.owner, projectSource: "public" as const })),
+    ];
     return (
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="rounded-2xl border border-white/10 bg-[#0d1220] p-6 shadow-2xl shadow-black/20">
@@ -1266,7 +1278,7 @@ export default function EditorPage() {
             </Button>
           </div>
         </div>
-        {ownedProjects.length === 0 ? (
+        {visibleProjects.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-10 text-center">
             <FileCode className="mx-auto mb-4 h-10 w-10 text-slate-600" />
             <h2 className="text-lg font-semibold text-white">No projects yet</h2>
@@ -1279,7 +1291,7 @@ export default function EditorPage() {
           </div>
         ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {ownedProjects.map((p) => (
+          {visibleProjects.map((p) => (
             <Card
               key={p.id}
               className="group cursor-pointer border-white/10 bg-[#111827] p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-400/30 hover:bg-[#151d2e]"
@@ -1295,6 +1307,11 @@ export default function EditorPage() {
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     <Badge variant="outline" className="border-white/10 text-[10px] text-slate-400">{p.language || "plaintext"}</Badge>
                     <Badge className="bg-emerald-500/10 text-[10px] text-emerald-300">{p.collaborationMode || "solo"}</Badge>
+                    {p.projectSource === "public" && (
+                      <Badge className="bg-cyan-500/10 text-[10px] text-cyan-200">
+                        Public by {p.owner?.name || p.owner?.username || "OCNE user"}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
