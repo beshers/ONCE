@@ -6,13 +6,10 @@ import { TRPCProvider } from "@/providers/trpc"
 import { ThemeProvider } from "@/providers/ThemeProvider"
 import App from './App.tsx'
 
-// Keep reloads honest. Older OCNE service workers cached app shells aggressively,
-// which could leave users stuck on stale bundles after a deploy. A service worker
-// can keep controlling the current page until the next navigation, so reload once
-// after cleanup and guard it with sessionStorage to avoid loops.
-const CACHE_CLEANUP_RELOAD_KEY = 'ocne-cache-cleanup-reloaded';
+const CACHE_CLEANUP_DONE_KEY = 'ocne-cache-cleanup-v2';
 
 async function clearLegacyBrowserCaches() {
+  if (localStorage.getItem(CACHE_CLEANUP_DONE_KEY) === 'true') return false;
   let cleaned = false;
 
   if ('serviceWorker' in navigator) {
@@ -31,18 +28,13 @@ async function clearLegacyBrowserCaches() {
     }
   }
 
+  localStorage.setItem(CACHE_CLEANUP_DONE_KEY, 'true');
   return cleaned;
 }
 
 if ('serviceWorker' in navigator || 'caches' in window) {
   window.addEventListener('load', () => {
-    clearLegacyBrowserCaches()
-      .then((cleaned) => {
-        if (!cleaned || sessionStorage.getItem(CACHE_CLEANUP_RELOAD_KEY) === 'true') return;
-        sessionStorage.setItem(CACHE_CLEANUP_RELOAD_KEY, 'true');
-        window.location.reload();
-      })
-      .catch(() => undefined);
+    clearLegacyBrowserCaches().catch(() => undefined);
   });
 }
 

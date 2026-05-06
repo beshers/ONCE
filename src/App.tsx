@@ -1,5 +1,5 @@
 import { Routes, Route } from 'react-router'
-import { lazy, Suspense, type ReactNode } from 'react'
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react'
 import { useAuth } from "@/hooks/useAuth"
 import Login from "./pages/Login"
 import NotFound from "./pages/NotFound"
@@ -47,6 +47,49 @@ function LoadingScreen() {
   )
 }
 
+function isChunkLoadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /loading chunk|failed to fetch dynamically imported module|importing a module script failed|chunkloaderror/i.test(message);
+}
+
+class ReloadRecoveryBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("OCNE route failed to render", error, info);
+    if (!isChunkLoadError(error)) return;
+    const key = "ocne-chunk-reload-attempted";
+    if (sessionStorage.getItem(key) === "true") return;
+    sessionStorage.setItem(key, "true");
+    window.location.reload();
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-6 text-center">
+        <div className="max-w-md rounded-2xl border border-white/10 bg-[#111827] p-6 shadow-2xl shadow-black/30">
+          <h1 className="text-lg font-semibold text-white">OCNE needs a fresh reload</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            The app loaded an old route bundle. Reload once to fetch the newest editor files.
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-5 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+          >
+            Reload OCNE
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
+
 function AuthWrapper({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth({ redirectOnUnauthenticated: true })
   if (isLoading) {
@@ -60,42 +103,44 @@ export default function App() {
   return (
     <>
       <PwaInstallButton />
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<AuthWrapper><Dashboard /></AuthWrapper>} />
-          <Route path="/projects" element={<AuthWrapper><ProjectsPage /></AuthWrapper>} />
-          <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
-          <Route path="/editor" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
-          <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
-          <Route path="/local-agent" element={<AuthWrapper><LocalAgentPage /></AuthWrapper>} />
-          <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
-          <Route path="/downloads" element={<AuthWrapper><DownloadsPage /></AuthWrapper>} />
-          <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
-          <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />
-          <Route path="/friends" element={<AuthWrapper><FriendsPage /></AuthWrapper>} />
-          <Route path="/notifications" element={<AuthWrapper><NotificationsPage /></AuthWrapper>} />
-          <Route path="/settings" element={<AuthWrapper><SettingsPage /></AuthWrapper>} />
-          <Route path="/leaderboard" element={<AuthWrapper><LeaderboardPage /></AuthWrapper>} />
-          <Route path="/playground" element={<AuthWrapper><PlaygroundPage /></AuthWrapper>} />
-          <Route path="/whiteboard" element={<AuthWrapper><WhiteboardPage /></AuthWrapper>} />
-          <Route path="/hackathons" element={<AuthWrapper><HackathonPage /></AuthWrapper>} />
-          <Route path="/snapshots" element={<AuthWrapper><SnapshotsPage /></AuthWrapper>} />
-          <Route path="/bookmarks" element={<AuthWrapper><BookmarksPage /></AuthWrapper>} />
-          <Route path="/organizations" element={<AuthWrapper><OrganizationPage /></AuthWrapper>} />
-          <Route path="/integrations" element={<AuthWrapper><IntegrationsPage /></AuthWrapper>} />
-          <Route path="/documentation" element={<AuthWrapper><DocumentationPage /></AuthWrapper>} />
-          <Route path="/stream" element={<AuthWrapper><StreamPage /></AuthWrapper>} />
-          <Route path="/dependencies" element={<AuthWrapper><DependencyPage /></AuthWrapper>} />
-          <Route path="/deployments" element={<AuthWrapper><DeploymentPage /></AuthWrapper>} />
-          <Route path="/bugs" element={<AuthWrapper><BugReportPage /></AuthWrapper>} />
-          <Route path="/env-vars" element={<AuthWrapper><EnvVariablesPage /></AuthWrapper>} />
-          <Route path="/activity" element={<AuthWrapper><ActivityHeatmapPage /></AuthWrapper>} />
-          <Route path="/themes" element={<AuthWrapper><ThemeSettingsPage /></AuthWrapper>} />
-          <Route path="/profile" element={<AuthWrapper><ProfilePage /></AuthWrapper>} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      <ReloadRecoveryBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<AuthWrapper><Dashboard /></AuthWrapper>} />
+            <Route path="/projects" element={<AuthWrapper><ProjectsPage /></AuthWrapper>} />
+            <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
+            <Route path="/editor" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
+            <Route path="/terminal" element={<AuthWrapper><TerminalPage /></AuthWrapper>} />
+            <Route path="/local-agent" element={<AuthWrapper><LocalAgentPage /></AuthWrapper>} />
+            <Route path="/chat" element={<AuthWrapper><ChatPage /></AuthWrapper>} />
+            <Route path="/downloads" element={<AuthWrapper><DownloadsPage /></AuthWrapper>} />
+            <Route path="/snippets" element={<AuthWrapper><SnippetsPage /></AuthWrapper>} />
+            <Route path="/social" element={<AuthWrapper><SocialPage /></AuthWrapper>} />
+            <Route path="/friends" element={<AuthWrapper><FriendsPage /></AuthWrapper>} />
+            <Route path="/notifications" element={<AuthWrapper><NotificationsPage /></AuthWrapper>} />
+            <Route path="/settings" element={<AuthWrapper><SettingsPage /></AuthWrapper>} />
+            <Route path="/leaderboard" element={<AuthWrapper><LeaderboardPage /></AuthWrapper>} />
+            <Route path="/playground" element={<AuthWrapper><PlaygroundPage /></AuthWrapper>} />
+            <Route path="/whiteboard" element={<AuthWrapper><WhiteboardPage /></AuthWrapper>} />
+            <Route path="/hackathons" element={<AuthWrapper><HackathonPage /></AuthWrapper>} />
+            <Route path="/snapshots" element={<AuthWrapper><SnapshotsPage /></AuthWrapper>} />
+            <Route path="/bookmarks" element={<AuthWrapper><BookmarksPage /></AuthWrapper>} />
+            <Route path="/organizations" element={<AuthWrapper><OrganizationPage /></AuthWrapper>} />
+            <Route path="/integrations" element={<AuthWrapper><IntegrationsPage /></AuthWrapper>} />
+            <Route path="/documentation" element={<AuthWrapper><DocumentationPage /></AuthWrapper>} />
+            <Route path="/stream" element={<AuthWrapper><StreamPage /></AuthWrapper>} />
+            <Route path="/dependencies" element={<AuthWrapper><DependencyPage /></AuthWrapper>} />
+            <Route path="/deployments" element={<AuthWrapper><DeploymentPage /></AuthWrapper>} />
+            <Route path="/bugs" element={<AuthWrapper><BugReportPage /></AuthWrapper>} />
+            <Route path="/env-vars" element={<AuthWrapper><EnvVariablesPage /></AuthWrapper>} />
+            <Route path="/activity" element={<AuthWrapper><ActivityHeatmapPage /></AuthWrapper>} />
+            <Route path="/themes" element={<AuthWrapper><ThemeSettingsPage /></AuthWrapper>} />
+            <Route path="/profile" element={<AuthWrapper><ProfilePage /></AuthWrapper>} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </ReloadRecoveryBoundary>
     </>
   )
 }
