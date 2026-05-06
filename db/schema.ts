@@ -102,6 +102,10 @@ export const projects = mysqlTable(
     description: text("description"),
     language: varchar("language", { length: 50 }).default("plaintext"),
     isPublic: boolean("is_public").default(true).notNull(),
+    projectVisibility: mysqlEnum("project_visibility", ["public", "friends", "selected", "private"])
+      .default("public")
+      .notNull(),
+    selectedFriendIds: text("selected_friend_ids"),
     aiAgentEnabled: boolean("ai_agent_enabled").default(false).notNull(),
     localFilesEnabled: boolean("local_files_enabled").default(false).notNull(),
     collaborationMode: mysqlEnum("collaboration_mode", ["solo", "team", "public"])

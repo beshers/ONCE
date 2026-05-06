@@ -26,7 +26,9 @@ const userColumns = [
 ] as const;
 
 const projectColumns = [
-  ["ai_agent_enabled", "TINYINT(1) NOT NULL DEFAULT 0 AFTER is_public"],
+  ["project_visibility", "ENUM('public','friends','selected','private') NOT NULL DEFAULT 'public' AFTER is_public"],
+  ["selected_friend_ids", "TEXT NULL AFTER project_visibility"],
+  ["ai_agent_enabled", "TINYINT(1) NOT NULL DEFAULT 0 AFTER selected_friend_ids"],
   ["local_files_enabled", "TINYINT(1) NOT NULL DEFAULT 0 AFTER ai_agent_enabled"],
   ["collaboration_mode", "ENUM('solo','team','public') NOT NULL DEFAULT 'solo' AFTER local_files_enabled"],
 ] as const;
@@ -39,6 +41,8 @@ const coreTableSql = [
     description TEXT DEFAULT NULL,
     language VARCHAR(50) DEFAULT 'plaintext',
     is_public TINYINT(1) NOT NULL DEFAULT 1,
+    project_visibility ENUM('public','friends','selected','private') NOT NULL DEFAULT 'public',
+    selected_friend_ids TEXT DEFAULT NULL,
     ai_agent_enabled TINYINT(1) NOT NULL DEFAULT 0,
     local_files_enabled TINYINT(1) NOT NULL DEFAULT 0,
     collaboration_mode ENUM('solo','team','public') NOT NULL DEFAULT 'solo',

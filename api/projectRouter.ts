@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { createRouter, authedQuery, publicQuery } from "./middleware";
+import { createRouter, authedQuery } from "./middleware";
 import { getDb } from "./queries/connection";
 import { incrementUserStats } from "./queries/user-stats";
-import { projects, projectFiles, projectCollaborators, projectVersions, users } from "@db/schema";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { projects, projectFiles, projectCollaborators, projectVersions, users, friends } from "@db/schema";
+import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
 
 type ProjectPresence = {
   userId: string;
@@ -26,6 +26,8 @@ type ProjectActivity = {
   fileId?: number | null;
   createdAt: number;
 };
+
+type ProjectVisibility = "public" | "friends" | "selected" | "private";
 
 const presenceByProject = new Map<number, Map<string, ProjectPresence>>();
 const activityByProject = new Map<number, ProjectActivity[]>();
@@ -69,6 +71,53 @@ function prunePresence(projectId: number) {
   return Array.from(usersMap.values()).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+function parseSelectedFriendIds(value?: string | null) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function projectVisibilityOf(project: { isPublic?: boolean | null; projectVisibility?: string | null }): ProjectVisibility {
+  if (project.projectVisibility === "public" || project.projectVisibility === "friends" || project.projectVisibility === "selected" || project.projectVisibility === "private") {
+    return project.projectVisibility;
+  }
+  return project.isPublic ? "public" : "private";
+}
+
+async function areAcceptedFriends(db: ReturnType<typeof getDb>, ownerId: string, userId: string) {
+  const [friend] = await db.select({ id: friends.id }).from(friends).where(
+    and(
+      eq(friends.status, "accepted"),
+      or(
+        and(eq(friends.requesterId, ownerId), eq(friends.addresseeId, userId)),
+        and(eq(friends.requesterId, userId), eq(friends.addresseeId, ownerId)),
+      ),
+    ),
+  ).limit(1);
+  return Boolean(friend);
+}
+
+async function canViewProject(db: ReturnType<typeof getDb>, project: typeof projects.$inferSelect, userId?: string | null) {
+  if (project.ownerId === userId) return true;
+  if (userId) {
+    const [collab] = await db.select({ id: projectCollaborators.id }).from(projectCollaborators).where(
+      and(eq(projectCollaborators.projectId, project.id), eq(projectCollaborators.userId, userId)),
+    ).limit(1);
+    if (collab) return true;
+  }
+
+  const visibility = projectVisibilityOf(project);
+  if (visibility === "public") return true;
+  if (!userId) return false;
+  if (visibility === "friends") return areAcceptedFriends(db, project.ownerId, userId);
+  if (visibility === "selected") return parseSelectedFriendIds(project.selectedFriendIds).includes(String(userId));
+  return false;
+}
+
 export const projectRouter = createRouter({
   // ── LIST ──
   list: authedQuery.query(async ({ ctx }) => {
@@ -89,13 +138,7 @@ export const projectRouter = createRouter({
       const db = getDb();
       const [project] = await db.select().from(projects).where(eq(projects.id, input.id));
       if (!project) throw new Error("Project not found");
-      const isOwner = project.ownerId === ctx.user.id;
-      if (!project.isPublic && !isOwner) {
-        const [collab] = await db.select().from(projectCollaborators).where(
-          and(eq(projectCollaborators.projectId, input.id), eq(projectCollaborators.userId, ctx.user.id))
-        );
-        if (!collab) throw new Error("Access denied");
-      }
+      if (!(await canViewProject(db, project, ctx.user.id))) throw new Error("Access denied");
       await db.update(projects).set({ views: sql`${projects.views} + 1` }).where(eq(projects.id, input.id));
       return project;
     }),
@@ -107,6 +150,8 @@ export const projectRouter = createRouter({
       description: z.string().optional(),
       language: z.string().default("plaintext"),
       isPublic: z.boolean().default(true),
+      projectVisibility: z.enum(["public", "friends", "selected", "private"]).default("public"),
+      selectedFriendIds: z.array(z.string()).default([]),
       aiAgentEnabled: z.boolean().default(false),
       localFilesEnabled: z.boolean().default(false),
       collaborationMode: z.enum(["solo", "team", "public"]).default("solo"),
@@ -120,7 +165,9 @@ export const projectRouter = createRouter({
         name: input.name,
         description: input.description,
         language: input.language,
-        isPublic: input.isPublic,
+        isPublic: input.projectVisibility === "public",
+        projectVisibility: input.projectVisibility,
+        selectedFriendIds: input.projectVisibility === "selected" ? JSON.stringify(input.selectedFriendIds) : null,
         aiAgentEnabled: input.aiAgentEnabled,
         localFilesEnabled: input.localFilesEnabled,
         collaborationMode: input.collaborationMode,
@@ -145,6 +192,8 @@ export const projectRouter = createRouter({
       description: z.string().optional(),
       language: z.string().optional(),
       isPublic: z.boolean().optional(),
+      projectVisibility: z.enum(["public", "friends", "selected", "private"]).optional(),
+      selectedFriendIds: z.array(z.string()).optional(),
       aiAgentEnabled: z.boolean().optional(),
       localFilesEnabled: z.boolean().optional(),
       collaborationMode: z.enum(["solo", "team", "public"]).optional(),
@@ -153,11 +202,17 @@ export const projectRouter = createRouter({
     }))
     .mutation(async ({ ctx, input }) => {
       const db = getDb();
-      const { id, ...data } = input;
+      const { id, selectedFriendIds, projectVisibility, isPublic, ...data } = input;
       const [project] = await db.select().from(projects).where(eq(projects.id, id));
       if (!project || project.ownerId !== ctx.user.id) throw new Error("Access denied");
-      await db.update(projects).set(data).where(eq(projects.id, id));
-      if (Object.keys(data).length > 0) {
+      const updateData = {
+        ...data,
+        ...(projectVisibility ? { projectVisibility, isPublic: projectVisibility === "public" } : {}),
+        ...(typeof isPublic === "boolean" && !projectVisibility ? { isPublic, projectVisibility: isPublic ? "public" as const : "private" as const } : {}),
+        ...(selectedFriendIds ? { selectedFriendIds: JSON.stringify(selectedFriendIds) } : {}),
+      };
+      await db.update(projects).set(updateData).where(eq(projects.id, id));
+      if (Object.keys(updateData).length > 0) {
         pushActivity(id, ctx.user, "settings", "project settings");
       }
       return { success: true };
@@ -181,12 +236,7 @@ export const projectRouter = createRouter({
       const db = getDb();
       const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
       if (!project) throw new Error("Project not found");
-      if (!project.isPublic && project.ownerId !== ctx.user.id) {
-        const [collab] = await db.select().from(projectCollaborators).where(
-          and(eq(projectCollaborators.projectId, input.projectId), eq(projectCollaborators.userId, ctx.user.id))
-        );
-        if (!collab) throw new Error("Access denied");
-      }
+      if (!(await canViewProject(db, project, ctx.user.id))) throw new Error("Access denied");
       const files = await db.select().from(projectFiles).where(eq(projectFiles.projectId, input.projectId));
       return files;
     }),
@@ -316,12 +366,7 @@ export const projectRouter = createRouter({
       const db = getDb();
       const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
       if (!project) throw new Error("Project not found");
-      if (!project.isPublic && project.ownerId !== ctx.user.id) {
-        const [collab] = await db.select().from(projectCollaborators).where(
-          and(eq(projectCollaborators.projectId, input.projectId), eq(projectCollaborators.userId, ctx.user.id))
-        );
-        if (!collab) throw new Error("Access denied");
-      }
+      if (!(await canViewProject(db, project, ctx.user.id))) throw new Error("Access denied");
 
       const usersMap = presenceByProject.get(input.projectId) || new Map<string, ProjectPresence>();
       const hadPresence = usersMap.has(ctx.user.id);
@@ -348,12 +393,7 @@ export const projectRouter = createRouter({
       const db = getDb();
       const [project] = await db.select().from(projects).where(eq(projects.id, input.projectId));
       if (!project) throw new Error("Project not found");
-      if (!project.isPublic && project.ownerId !== ctx.user.id) {
-        const [collab] = await db.select().from(projectCollaborators).where(
-          and(eq(projectCollaborators.projectId, input.projectId), eq(projectCollaborators.userId, ctx.user.id))
-        );
-        if (!collab) throw new Error("Access denied");
-      }
+      if (!(await canViewProject(db, project, ctx.user.id))) throw new Error("Access denied");
       return {
         users: prunePresence(input.projectId),
         activity: activityByProject.get(input.projectId) || [],
@@ -414,10 +454,7 @@ export const projectRouter = createRouter({
       const [file] = await db.select().from(projectFiles).where(eq(projectFiles.id, input.fileId));
       if (!file) throw new Error("File not found");
       const [project] = await db.select().from(projects).where(eq(projects.id, file.projectId));
-      const hasAccess = project.isPublic || project.ownerId === ctx.user.id || !!(await db.query.projectCollaborators.findFirst({
-        where: and(eq(projectCollaborators.projectId, file.projectId), eq(projectCollaborators.userId, ctx.user.id)),
-      }));
-      if (!hasAccess) throw new Error("Access denied");
+      if (!(await canViewProject(db, project, ctx.user.id))) throw new Error("Access denied");
       const versions = await db.select({
         version: projectVersions,
         author: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
@@ -464,16 +501,23 @@ export const projectRouter = createRouter({
       return { success: true };
     }),
 
-  publicProjects: publicQuery.query(async () => {
+  publicProjects: authedQuery.query(async ({ ctx }) => {
     const db = getDb();
     const rows = await db.select({
       project: projects,
       owner: { id: users.id, name: users.name, username: users.username, avatar: users.avatar },
     }).from(projects)
       .leftJoin(users, eq(projects.ownerId, users.id))
-      .where(eq(projects.isPublic, true))
+      .where(sql`${projects.status} != 'archived'`)
       .orderBy(desc(projects.updatedAt))
-      .limit(50);
-    return rows;
+      .limit(100);
+    const visibleRows = [];
+    for (const row of rows) {
+      if (await canViewProject(db, row.project, ctx.user.id)) {
+        visibleRows.push(row);
+      }
+      if (visibleRows.length >= 50) break;
+    }
+    return visibleRows;
   }),
 });

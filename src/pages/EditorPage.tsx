@@ -230,11 +230,39 @@ type ProviderCard = [string, LucideIcon];
 type SaveIntent = "manual" | "auto" | "language";
 type SaveStatus = "saved" | "saving" | "queued" | "unsaved" | "error" | "restoring" | "offline";
 type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
+type ProjectVisibility = "public" | "friends" | "selected" | "private";
+const projectVisibilityOptions: Array<{ value: ProjectVisibility; label: string; help: string }> = [
+  { value: "public", label: "Public for all users", help: "Everyone on OCNE can discover and open this project." },
+  { value: "friends", label: "Only friends", help: "All accepted friends can open the project." },
+  { value: "selected", label: "Selected friends", help: "Only the friends you choose can open the project." },
+  { value: "private", label: "Private", help: "Only you and direct collaborators can open the project." },
+];
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 const AGENT_COMMAND_KEY = "ocne-agent-command";
 const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
 const DATABASE_AUTOSAVE_DELAY_MS = 1500;
 const BACKGROUND_FILE_REFRESH_MS = 15000;
+
+function projectVisibilityOf(project: { projectVisibility?: string | null; isPublic?: boolean | null } | null | undefined): ProjectVisibility {
+  if (project?.projectVisibility === "public" || project?.projectVisibility === "friends" || project?.projectVisibility === "selected" || project?.projectVisibility === "private") {
+    return project.projectVisibility;
+  }
+  return project?.isPublic ? "public" : "private";
+}
+
+function projectVisibilityLabel(project: { projectVisibility?: string | null; isPublic?: boolean | null } | null | undefined) {
+  return projectVisibilityOptions.find((option) => option.value === projectVisibilityOf(project))?.label || "Private";
+}
+
+function parseSelectedProjectFriends(value?: string | null) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -280,6 +308,7 @@ export default function EditorPage() {
   const [minimapEnabled, setMinimapEnabled] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(14);
   const [collaborationStatus, setCollaborationStatus] = useState<CollaborationStatus>("solo");
+  const [selectedFriendDraft, setSelectedFriendDraft] = useState<string[] | null>(null);
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const saveIntentRef = useRef<SaveIntent>("manual");
@@ -293,6 +322,9 @@ export default function EditorPage() {
     { id: projectId! },
     { enabled: !!projectId }
   );
+  const { data: friends = [] } = trpc.friend.list.useQuery(undefined, {
+    enabled: !!projectId,
+  });
   const { data: files } = trpc.project.fileList.useQuery(
     { projectId: projectId! },
     {
@@ -420,6 +452,7 @@ export default function EditorPage() {
       toast.success("Project settings saved");
       utils.project.get.invalidate({ id: projectId! });
       utils.project.list.invalidate();
+      utils.project.publicProjects.invalidate();
     },
   });
 
@@ -482,6 +515,10 @@ export default function EditorPage() {
     ? `${projectShareBaseUrl}${projectShareBaseUrl.includes("?") ? "&" : "?"}share=collab&together=true&aiContext=project`
     : window.location.origin;
   const editableCollaborators = (collaborators || []).filter((item) => item.collab.role === "owner" || item.collab.role === "editor").length;
+  const acceptedFriends = friends.filter((friend) => friend.status === "accepted" && friend.user?.id);
+  const savedSelectedFriendIds = parseSelectedProjectFriends(project?.selectedFriendIds);
+  const effectiveSelectedFriendIds = selectedFriendDraft ?? savedSelectedFriendIds;
+  const effectiveProjectVisibility = projectVisibilityOf(project);
 
   const detectRunCommand = () => {
     const packageJson = (files || []).find((file) => file.type === "file" && file.name === "package.json");
@@ -1309,7 +1346,7 @@ export default function EditorPage() {
                     <Badge className="bg-emerald-500/10 text-[10px] text-emerald-300">{p.collaborationMode || "solo"}</Badge>
                     {p.projectSource === "public" && (
                       <Badge className="bg-cyan-500/10 text-[10px] text-cyan-200">
-                        Public by {p.owner?.name || p.owner?.username || "OCNE user"}
+                        {projectVisibilityLabel(p)} by {p.owner?.name || p.owner?.username || "OCNE user"}
                       </Badge>
                     )}
                   </div>
@@ -2940,6 +2977,60 @@ export default function EditorPage() {
             <h3 className="text-sm font-semibold text-white">Project Settings</h3>
             <p className="mt-1 text-xs text-slate-500">Control AI help, local-file access, and how people collaborate on this project.</p>
             <div className="mt-4 grid gap-3">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                <label className="mb-2 block text-sm font-medium text-white">Project visibility</label>
+                <Select
+                  value={effectiveProjectVisibility}
+                  onValueChange={(value: ProjectVisibility) => {
+                    const selectedFriendIds = value === "selected" ? effectiveSelectedFriendIds : [];
+                    updateProject.mutate({ id: projectId!, projectVisibility: value, selectedFriendIds });
+                  }}
+                >
+                  <SelectTrigger className="border-white/10 bg-white/5 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                    {projectVisibilityOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="text-white">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {projectVisibilityOptions.find((option) => option.value === effectiveProjectVisibility)?.help}
+                </p>
+                {effectiveProjectVisibility === "selected" && (
+                  <div className="mt-3 grid gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                    {acceptedFriends.length === 0 ? (
+                      <p className="text-xs text-slate-500">Add accepted friends first, then select who can open this project.</p>
+                    ) : acceptedFriends.map((friend) => {
+                      const friendId = friend.user!.id;
+                      const checked = effectiveSelectedFriendIds.includes(friendId);
+                      return (
+                        <label key={friend.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-200 hover:bg-white/[0.04]">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              const nextIds = event.target.checked
+                                ? [...effectiveSelectedFriendIds, friendId]
+                                : effectiveSelectedFriendIds.filter((id) => id !== friendId);
+                              setSelectedFriendDraft(nextIds);
+                              updateProject.mutate({ id: projectId!, projectVisibility: "selected", selectedFriendIds: nextIds });
+                            }}
+                            className="h-4 w-4 rounded border-white/20"
+                          />
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 text-xs font-semibold text-white">
+                            {(friend.user?.name || friend.user?.username || "U").charAt(0).toUpperCase()}
+                          </span>
+                          <span>{friend.user?.name || friend.user?.username || "OCNE friend"}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <label className="flex items-start justify-between gap-4 rounded-lg border border-white/10 bg-black/20 p-3">
                 <span>
                   <span className="flex items-center gap-2 text-sm font-medium text-white">

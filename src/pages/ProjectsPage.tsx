@@ -12,6 +12,19 @@ import {
   Clock, Code2, Star, Bot, HardDrive, UserRound, Users
 } from "lucide-react";
 
+type ProjectVisibility = "public" | "friends" | "selected" | "private";
+
+const projectVisibilityOptions: Array<{
+  value: ProjectVisibility;
+  label: string;
+  help: string;
+}> = [
+  { value: "public", label: "Public for all users", help: "Everyone on OCNE can discover and open it." },
+  { value: "friends", label: "Only friends", help: "All accepted friends can see the project." },
+  { value: "selected", label: "Selected friends", help: "Only the friends you choose can see it." },
+  { value: "private", label: "Private", help: "Only you and direct collaborators can open it." },
+];
+
 const languageIcons: Record<string, string> = {
   javascript: "⚡", typescript: "📘", python: "🐍", php: "🐘",
   csharp: "💠", java: "☕", html: "🌐", css: "🎨", go: "🐹",
@@ -29,6 +42,17 @@ const starterCode: Record<string, string> = {
   css: '/* CSS Project */\nbody {\n  font-family: sans-serif;\n  background: #0a0a0f;\n  color: #e2e8f0;\n}\n',
 };
 
+function visibilityOf(project: { projectVisibility?: string | null; isPublic?: boolean | null }): ProjectVisibility {
+  if (project.projectVisibility === "public" || project.projectVisibility === "friends" || project.projectVisibility === "selected" || project.projectVisibility === "private") {
+    return project.projectVisibility;
+  }
+  return project.isPublic ? "public" : "private";
+}
+
+function visibilityLabel(project: { projectVisibility?: string | null; isPublic?: boolean | null }) {
+  return projectVisibilityOptions.find((option) => option.value === visibilityOf(project))?.label || "Private";
+}
+
 export default function ProjectsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
@@ -37,6 +61,7 @@ export default function ProjectsPage() {
 
   const { data: projects, isLoading } = trpc.project.list.useQuery();
   const { data: publicProjectRows, isLoading: publicProjectsLoading } = trpc.project.publicProjects.useQuery();
+  const { data: friends = [] } = trpc.friend.list.useQuery();
   const createProject = trpc.project.create.useMutation({
     onSuccess: () => {
       utils.project.list.invalidate();
@@ -50,6 +75,8 @@ export default function ProjectsPage() {
     description: "",
     language: "javascript",
     isPublic: true,
+    projectVisibility: "public" as ProjectVisibility,
+    selectedFriendIds: [] as string[],
     aiAgentEnabled: false,
     localFilesEnabled: false,
     collaborationMode: "solo" as "solo" | "team" | "public",
@@ -76,11 +103,14 @@ export default function ProjectsPage() {
         (p.description || "").toLowerCase().includes(search.toLowerCase())
       )
     : allProjects;
+  const acceptedFriends = friends.filter((friend) => friend.status === "accepted" && friend.user?.id);
 
   const handleCreate = () => {
     if (!newProject.name.trim()) return;
     createProject.mutate({
       ...newProject,
+      isPublic: newProject.projectVisibility === "public",
+      selectedFriendIds: newProject.projectVisibility === "selected" ? newProject.selectedFriendIds : [],
       initialCode: starterCode[newProject.language] || "",
     });
   };
@@ -138,14 +168,60 @@ export default function ProjectsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={newProject.isPublic}
-                  onChange={(e) => setNewProject({ ...newProject, isPublic: e.target.checked })}
-                  className="rounded border-white/20"
-                />
-                <span className="text-sm text-slate-300">Public project</span>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <label className="text-xs text-slate-400 mb-1 block">Project visibility</label>
+                <Select
+                  value={newProject.projectVisibility}
+                  onValueChange={(value: ProjectVisibility) => setNewProject({
+                    ...newProject,
+                    projectVisibility: value,
+                    isPublic: value === "public",
+                    selectedFriendIds: value === "selected" ? newProject.selectedFriendIds : [],
+                  })}
+                >
+                  <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a2e] border-white/10">
+                    {projectVisibilityOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="text-white hover:bg-white/10">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  {projectVisibilityOptions.find((option) => option.value === newProject.projectVisibility)?.help}
+                </p>
+                {newProject.projectVisibility === "selected" && (
+                  <div className="mt-3 grid gap-2 rounded-lg border border-white/10 bg-black/20 p-2">
+                    {acceptedFriends.length === 0 ? (
+                      <p className="text-xs text-slate-500">Add accepted friends first, then choose who can see this project.</p>
+                    ) : acceptedFriends.map((friend) => {
+                      const friendId = friend.user!.id;
+                      const checked = newProject.selectedFriendIds.includes(friendId);
+                      return (
+                        <label key={friend.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-200 hover:bg-white/[0.04]">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => setNewProject({
+                              ...newProject,
+                              selectedFriendIds: event.target.checked
+                                ? [...newProject.selectedFriendIds, friendId]
+                                : newProject.selectedFriendIds.filter((id) => id !== friendId),
+                            })}
+                            className="h-4 w-4 rounded border-white/20"
+                          />
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 text-xs font-semibold text-white">
+                            {(friend.user?.name || friend.user?.username || "U").charAt(0).toUpperCase()}
+                          </span>
+                          <span>{friend.user?.name || friend.user?.username || "OCNE friend"}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <div className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -247,7 +323,7 @@ export default function ProjectsPage() {
                     {languageIcons[project.language || "plaintext"] || "📄"}
                   </div>
                   <div className="flex items-center gap-1">
-                  {project.isPublic ? (
+                  {visibilityOf(project) === "public" ? (
                     <Globe className="w-3 h-3 text-slate-600" />
                   ) : (
                     <Lock className="w-3 h-3 text-slate-600" />
@@ -260,10 +336,14 @@ export default function ProjectsPage() {
                 <p className="text-xs text-slate-500 line-clamp-2 mb-3">{project.description || "No description"}</p>
                 {project.projectSource === "public" && (
                   <div className="mb-3 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100">
-                    Public project by {project.owner?.name || project.owner?.username || "OCNE user"}
+                    {visibilityLabel(project)} by {project.owner?.name || project.owner?.username || "OCNE user"}
                   </div>
                 )}
                 <div className="mb-3 flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-slate-400">
+                    {visibilityOf(project) === "public" ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                    {visibilityLabel(project)}
+                  </span>
                   {project.projectSource !== "public" && (
                     <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-slate-400">
                       {project.projectSource === "owned" ? "Your project" : "Shared with you"}
