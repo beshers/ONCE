@@ -473,6 +473,10 @@ export default function EditorPage() {
     ? `${projectShareBaseUrl}${projectShareBaseUrl.includes("?") ? "&" : "?"}preview=device&share=view&aiContext=project`
     : window.location.origin;
   const deviceQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(devicePreviewUrl)}`;
+  const togetherShareUrl = projectId
+    ? `${projectShareBaseUrl}${projectShareBaseUrl.includes("?") ? "&" : "?"}share=collab&together=true&aiContext=project`
+    : window.location.origin;
+  const editableCollaborators = (collaborators || []).filter((item) => item.collab.role === "owner" || item.collab.role === "editor").length;
 
   const detectRunCommand = () => {
     const packageJson = (files || []).find((file) => file.type === "file" && file.name === "package.json");
@@ -812,6 +816,18 @@ export default function EditorPage() {
       return;
     }
     setShareOpen(true);
+  };
+
+  const startTogetherCoding = () => {
+    if (!projectId) return;
+    if (project?.collaborationMode === "solo") {
+      updateProject.mutate({ id: projectId, collaborationMode: "team" });
+    }
+    setShareMode("collab");
+    setActiveTab("together");
+    void navigator.clipboard.writeText(togetherShareUrl)
+      .then(() => toast.success("Together Coding link copied. Send it to your teammate."))
+      .catch(() => toast.info("Together Coding is ready. Copy the link from the Together tab."));
   };
 
   const createShareLink = async () => {
@@ -1410,6 +1426,9 @@ export default function EditorPage() {
           <TabsTrigger value="editor" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <FileCode className="w-3.5 h-3.5 mr-1.5" /> Editor
           </TabsTrigger>
+          <TabsTrigger value="together" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
+            <Users className="w-3.5 h-3.5 mr-1.5" /> Together
+          </TabsTrigger>
           <TabsTrigger value="reviews" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
             <MessageSquare className="w-3.5 h-3.5 mr-1.5" /> Reviews {reviews && reviews.length > 0 && `(${reviews.length})`}
           </TabsTrigger>
@@ -1433,6 +1452,168 @@ export default function EditorPage() {
           </TabsTrigger>
         </TabsList>
         </div>
+
+        <TabsContent value="together" className="mt-0 min-h-0 flex-1 overflow-auto">
+          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-cyan-400/20 bg-[#0c1624] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="max-w-2xl">
+                    <Badge className="mb-3 bg-cyan-500/15 text-cyan-100">Together Coding</Badge>
+                    <h2 className="text-2xl font-semibold text-white">Code in the same workspace, at the same time.</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-400">
+                      Share a collaborative link, watch teammates appear in the live room, preview the app, and keep every save in Verlauf history.
+                    </p>
+                  </div>
+                  <Button onClick={startTogetherCoding} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                    <Share2 className="mr-2 h-4 w-4" /> Start Together
+                  </Button>
+                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-4">
+                  {([
+                    ["Mode", project?.collaborationMode === "solo" ? "Solo" : project?.collaborationMode === "team" ? "Team" : "Public", Users],
+                    ["Live users", String(liveUsers.length), Radio],
+                    ["Editors", String(editableCollaborators), ShieldCheck],
+                    ["Snapshots", String(versions?.length || 0), GitBranch],
+                  ] satisfies FeatureCard[]).map(([label, value, Icon]) => (
+                    <div key={String(label)} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                        <Icon className="h-3.5 w-3.5 text-cyan-300" /> {label}
+                      </div>
+                      <div className="mt-2 text-lg font-semibold text-white">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Users className="h-4 w-4 text-cyan-300" /> Invite teammates
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Team mode lets invited collaborators join the same file with live presence and shared project context.
+                  </p>
+                  <Input value={togetherShareUrl} readOnly className="mt-3 border-white/10 bg-black/30 font-mono text-xs text-white" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10"
+                    onClick={() => void navigator.clipboard.writeText(togetherShareUrl).then(() => toast.success("Together link copied."))}
+                  >
+                    <Copy className="mr-2 h-4 w-4" /> Copy invite link
+                  </Button>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Monitor className="h-4 w-4 text-emerald-300" /> Live preview
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    HTML, CSS, and JavaScript files render inside the editor so everyone can review output while coding.
+                  </p>
+                  <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                    {canShowPreview ? `Preview ready for ${activeFile?.name}` : "Select an HTML, CSS, or JavaScript file to preview."}
+                  </div>
+                  <Button size="sm" variant="ghost" className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => setActiveTab("editor")}>
+                    <Eye className="mr-2 h-4 w-4" /> Open preview panel
+                  </Button>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <GitBranch className="h-4 w-4 text-violet-300" /> Verlauf history
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    Every database save becomes a version snapshot with diff view and restore.
+                  </p>
+                  <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                    Latest: {latestVersion ? `v${latestVersion.versionNumber}` : "No snapshot yet"}
+                  </div>
+                  <Button size="sm" variant="ghost" className="mt-3 border border-white/10 text-slate-100 hover:bg-white/10" onClick={() => setActiveTab("versions")}>
+                    <Clock className="mr-2 h-4 w-4" /> Open history
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                    <Activity className="h-4 w-4 text-cyan-300" /> Session activity
+                  </h3>
+                  <Badge className={collaborationEnabled ? "bg-emerald-500/10 text-emerald-300" : "bg-slate-500/10 text-slate-300"}>
+                    {collaborationEnabled ? "Live room on" : "Solo mode"}
+                  </Badge>
+                </div>
+                {liveActivity.length === 0 ? (
+                  <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-500">
+                    Edits, file changes, and collaborator actions will appear here when the room is active.
+                  </p>
+                ) : (
+                  <div className="grid gap-2">
+                    {liveActivity.slice(0, 8).map((item) => (
+                      <div key={item.id} className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-slate-300">
+                        {activityText(item)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <aside className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Radio className="h-4 w-4 text-emerald-300" /> Who is here
+                </h3>
+                <div className="mt-3 space-y-2">
+                  {liveUsers.length === 0 ? (
+                    <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-500">
+                      No teammates are live yet. Copy the Together link to invite one.
+                    </p>
+                  ) : liveUsers.map((user, index) => (
+                    <div key={user.userId} className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ["#22d3ee", "#a78bfa", "#34d399", "#f59e0b"][index % 4] }} />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs text-white">{user.name}</div>
+                        <div className="truncate text-[10px] text-slate-500">{user.status} {user.activeFileName || "workspace"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-[#13131f] p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <MessageSquare className="h-4 w-4 text-cyan-300" /> Quick note
+                </h3>
+                <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                  <Input
+                    value={liveChatMessage}
+                    onChange={(event) => setLiveChatMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") sendLiveChat();
+                    }}
+                    placeholder="Ask the room..."
+                    className="border-white/10 bg-white/[0.04] text-white"
+                  />
+                  <Button size="icon" onClick={() => sendLiveChat()} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-100">
+                  <Database className="h-4 w-4" /> Cross-device save
+                </h3>
+                <p className="mt-2 text-xs leading-5 text-emerald-50/75">
+                  Code is cached locally for speed and synced to the database after typing stops, so the same account can continue on another device.
+                </p>
+              </div>
+            </aside>
+          </div>
+        </TabsContent>
 
         <TabsContent value="editor" className="mt-0 min-h-0 flex-1 space-y-4 overflow-auto">
           <div className="grid min-h-[620px] gap-0 overflow-hidden rounded-xl border border-white/10 bg-[#0b0f19] xl:grid-cols-[260px_minmax(0,1fr)_320px]">
