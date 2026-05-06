@@ -239,7 +239,6 @@ export default function ChatPage() {
   const [activeRoom, setActiveRoom] = useState<string>("global");
   const [directRecipientId, setDirectRecipientId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
-  const [lastMessageId, setLastMessageId] = useState(0);
   const [threadSearch, setThreadSearch] = useState("");
   const [messageSearch, setMessageSearch] = useState("");
   const [inviteUserId, setInviteUserId] = useState("");
@@ -378,9 +377,9 @@ export default function ChatPage() {
   const messageQueryInput = useMemo(
     () =>
       directRecipientId
-        ? { receiverId: directRecipientId, since: lastMessageId }
-        : { roomId: activeRoom, since: lastMessageId },
-    [activeRoom, directRecipientId, lastMessageId],
+        ? { receiverId: directRecipientId }
+        : { roomId: activeRoom },
+    [activeRoom, directRecipientId],
   );
   const { data: messages, refetch } = trpc.chat.messages.useQuery(
     messageQueryInput,
@@ -1224,7 +1223,6 @@ export default function ChatPage() {
   }, [callState, directThreads, incomingCallOffers, user?.id]);
 
   useEffect(() => {
-    setLastMessageId(0);
     setMessageText("");
     setMessageSearch("");
     if (!directRecipientId) {
@@ -1239,15 +1237,6 @@ export default function ChatPage() {
       markThreadRead.mutate({ userId: directRecipientId });
     }
   }, [directRecipientId, markThreadRead]);
-
-  useEffect(() => {
-    if (messages && messages.length > 0) {
-      const maxId = Math.max(...messages.map((m) => m.message.id), lastMessageId);
-      if (maxId > lastMessageId) {
-        setLastMessageId(maxId);
-      }
-    }
-  }, [messages, lastMessageId]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -4088,6 +4077,12 @@ export default function ChatPage() {
                     <Textarea
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          handleSend();
+                        }
+                      }}
                       placeholder={directRecipientId ? `Message ${roomName}...` : "Message the room, paste code, share context, or post a call update..."}
                       className="min-h-[88px] resize-none border-0 bg-transparent text-[#25271f] placeholder:text-[#8b876e] focus-visible:ring-0"
                     />
