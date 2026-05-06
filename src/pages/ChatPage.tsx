@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { enableWebSockets, trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfileRingtone } from "@/hooks/useProfileRingtone";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,21 @@ import {
   WandSparkles,
   Wifi,
 } from "lucide-react";
+
+const chatTheme = {
+  "--chat-display": "'Bahnschrift', 'Aptos Display', 'Segoe UI Variable', sans-serif",
+  "--chat-reader": "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Georgia, serif",
+  "--chat-void": "#080b07",
+  "--chat-panel": "#11170f",
+  "--chat-panel-2": "#151c13",
+  "--chat-line": "#35402f",
+  "--chat-lime": "#d6ff68",
+  "--chat-ember": "#ff7a3b",
+  "--chat-paper": "#f7f1e2",
+  "--chat-paper-2": "#ebe4cf",
+  "--chat-ink": "#1a1d15",
+  "--chat-muted": "#6f715f",
+} as CSSProperties & Record<string, string>;
 
 type EventKind =
   | "snippet"
@@ -204,6 +221,7 @@ function formatFileSize(bytes?: number) {
 export default function ChatPage() {
   const { user } = useAuth();
   const utils = trpc.useUtils();
+  const profileRingtone = useProfileRingtone(user?.id);
   const [activeRoom, setActiveRoom] = useState<string>("global");
   const [directRecipientId, setDirectRecipientId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
@@ -290,6 +308,7 @@ export default function ChatPage() {
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneTimerRef = useRef<number | null>(null);
+  const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
   const missedCallTimerRef = useRef<number | null>(null);
   const isCleaningUpCallRef = useRef(false);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
@@ -743,10 +762,27 @@ export default function ChatPage() {
       window.clearInterval(ringtoneTimerRef.current);
       ringtoneTimerRef.current = null;
     }
+    if (ringtoneAudioRef.current) {
+      ringtoneAudioRef.current.pause();
+      ringtoneAudioRef.current.currentTime = 0;
+      ringtoneAudioRef.current = null;
+    }
   }
 
   function playRingtone(mode: "voice" | "video") {
     if (typeof window === "undefined" || ringtoneTimerRef.current) return;
+    if (profileRingtone.url) {
+      const audio = new Audio(profileRingtone.url);
+      audio.loop = true;
+      audio.volume = 0.88;
+      ringtoneAudioRef.current = audio;
+      void audio.play().catch(() => {
+        ringtoneAudioRef.current = null;
+        setCallHealthMessage("Browser blocked your custom ringtone until the page receives a user click.");
+      });
+      return;
+    }
+
     const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
     const AudioContextConstructor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
     if (!AudioContextConstructor) return;
@@ -2830,48 +2866,290 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-92px)] max-w-[1600px] flex-col gap-3 bg-[#070a10] bg-[linear-gradient(180deg,#0f1724_0%,#070a10_38%,#05070b_100%)] p-2 text-slate-100 lg:flex-row lg:gap-0 lg:p-0">
+    <div
+      className="chat-shell relative mx-auto flex min-h-[calc(100vh-92px)] max-w-[1600px] flex-col gap-3 overflow-hidden border-x border-[var(--chat-line)] bg-[var(--chat-void)] p-2 text-slate-100 lg:flex-row lg:gap-0 lg:p-0"
+      style={chatTheme}
+    >
+      <style>{`
+        .chat-shell {
+          font-family: var(--chat-display);
+          isolation: isolate;
+          cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M4 4l12 7-5 2-2 5z' fill='%23d6ff68' stroke='%23080b07' stroke-width='1.5'/%3E%3C/svg%3E") 4 4, auto;
+          background:
+            radial-gradient(circle at 16% 10%, color-mix(in srgb, var(--chat-lime) 14%, transparent), transparent 28%),
+            radial-gradient(circle at 86% 18%, color-mix(in srgb, var(--chat-ember) 13%, transparent), transparent 30%),
+            repeating-linear-gradient(115deg, rgba(214,255,104,.035) 0 1px, transparent 1px 15px),
+            linear-gradient(180deg, #10170e 0%, var(--chat-void) 52%, #050704 100%);
+        }
+
+        .chat-atmosphere {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .chat-atmosphere--grain {
+          opacity: .18;
+          mix-blend-mode: soft-light;
+          background-image:
+            radial-gradient(circle at 20% 30%, rgba(255,255,255,.42) 0 .7px, transparent .8px),
+            radial-gradient(circle at 70% 64%, rgba(255,255,255,.32) 0 .6px, transparent .7px),
+            radial-gradient(circle at 38% 82%, rgba(0,0,0,.52) 0 .8px, transparent .9px);
+          background-size: 13px 17px, 19px 23px, 29px 31px;
+        }
+
+        .chat-atmosphere--beam {
+          opacity: .4;
+          background:
+            linear-gradient(102deg, transparent 0 16%, rgba(214,255,104,.1) 17%, transparent 32%),
+            linear-gradient(142deg, transparent 0 46%, rgba(255,122,59,.12) 47%, transparent 58%);
+          filter: blur(.3px);
+        }
+
+        .chat-atmosphere--vignette {
+          box-shadow: inset 0 0 140px rgba(0,0,0,.56), inset 0 0 28px rgba(214,255,104,.08);
+        }
+
+        .chat-shell::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          opacity: .16;
+          background-image:
+            linear-gradient(color-mix(in srgb, var(--chat-lime) 20%, transparent) 1px, transparent 1px),
+            linear-gradient(90deg, color-mix(in srgb, var(--chat-lime) 12%, transparent) 1px, transparent 1px);
+          background-size: 34px 34px;
+          mask-image: linear-gradient(90deg, black, transparent 76%);
+        }
+
+        .chat-shell::after {
+          content: "";
+          position: absolute;
+          right: -10rem;
+          top: -18rem;
+          width: 36rem;
+          height: 36rem;
+          border: 1px solid color-mix(in srgb, var(--chat-lime) 25%, transparent);
+          border-radius: 999px;
+          opacity: .34;
+          animation: chatOrbital 18s ease-in-out infinite alternate;
+          pointer-events: none;
+        }
+
+        .chat-panel-enter {
+          animation: chatPanelIn 640ms cubic-bezier(.22,1,.36,1) both;
+        }
+
+        .chat-panel-enter,
+        .chat-main-enter {
+          position: relative;
+        }
+
+        .chat-panel-enter::before,
+        .chat-main-enter::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border: 1px solid rgba(214,255,104,.08);
+          pointer-events: none;
+          background:
+            linear-gradient(90deg, rgba(214,255,104,.08), transparent 24%, transparent 76%, rgba(255,122,59,.07)),
+            repeating-linear-gradient(0deg, transparent 0 27px, rgba(255,255,255,.028) 28px);
+          mix-blend-mode: screen;
+          opacity: .7;
+        }
+
+        .chat-main-enter {
+          animation: chatPanelIn 720ms cubic-bezier(.22,1,.36,1) 90ms both;
+        }
+
+        .chat-nav-item {
+          position: relative;
+          transform: translateZ(0);
+          transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease;
+        }
+
+        .chat-nav-item:hover {
+          transform: translateX(4px);
+        }
+
+        .chat-nav-item::after {
+          content: "";
+          position: absolute;
+          inset: 10px auto 10px 0;
+          width: 2px;
+          background: var(--chat-lime);
+          opacity: 0;
+          transform: scaleY(.25);
+          transition: opacity 180ms ease, transform 180ms ease;
+        }
+
+        .chat-nav-item:hover::after,
+        .chat-nav-item[data-active="true"]::after {
+          opacity: 1;
+          transform: scaleY(1);
+        }
+
+        .chat-ledger {
+          font-family: var(--chat-reader);
+          position: relative;
+        }
+
+        .chat-ledger::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            radial-gradient(circle at 12% 18%, rgba(158,121,53,.12), transparent 22%),
+            radial-gradient(circle at 92% 82%, rgba(26,29,21,.10), transparent 25%),
+            repeating-linear-gradient(90deg, rgba(26,29,21,.035) 0 1px, transparent 1px 84px);
+          mix-blend-mode: multiply;
+          opacity: .72;
+          z-index: 0;
+        }
+
+        .chat-ledger::after {
+          content: "";
+          position: absolute;
+          inset: 10px;
+          pointer-events: none;
+          border: 1px solid rgba(26,29,21,.08);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), inset 0 0 46px rgba(113,89,41,.1);
+          z-index: 0;
+        }
+
+        .chat-ledger > * {
+          position: relative;
+          z-index: 1;
+        }
+
+        .chat-ledger-title,
+        .chat-ledger button,
+        .chat-ledger input,
+        .chat-ledger textarea,
+        .chat-message-meta {
+          font-family: var(--chat-display);
+        }
+
+        .chat-message-row {
+          animation: chatMessageIn 420ms cubic-bezier(.2,.8,.2,1) both;
+        }
+
+        .chat-message-bubble {
+          transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .chat-message-bubble::selection,
+        .chat-ledger textarea::selection,
+        .chat-ledger input::selection {
+          background: rgba(214,255,104,.48);
+          color: var(--chat-ink);
+        }
+
+        .chat-message-bubble:hover {
+          transform: translateY(-2px) rotate(-0.18deg);
+          box-shadow: 0 18px 42px rgba(0,0,0,.18);
+        }
+
+        .chat-send-button {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .chat-send-button::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 0%, rgba(214,255,104,.28) 45%, transparent 60%);
+          transform: translateX(-120%);
+          transition: transform 520ms ease;
+        }
+
+        .chat-send-button:hover::before {
+          transform: translateX(120%);
+        }
+
+        @keyframes chatPanelIn {
+          from { opacity: 0; transform: translateY(18px) scale(.985); filter: blur(10px); }
+          to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+        }
+
+        @keyframes chatMessageIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes chatOrbital {
+          from { transform: translate3d(0,0,0) rotate(-16deg); }
+          to { transform: translate3d(-28px,18px,0) rotate(8deg); }
+        }
+      `}</style>
+      <div className="chat-atmosphere chat-atmosphere--grain" />
+      <div className="chat-atmosphere chat-atmosphere--beam" />
+      <div className="chat-atmosphere chat-atmosphere--vignette" />
       {callState === "incoming" && incomingCall && (
-        <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
-          <div className="flex items-start gap-3">
-            <UserAvatar user={currentDirectUser} fallback={incomingCallerName} className="h-12 w-12 shrink-0 border border-amber-400/30" fallbackClassName="bg-amber-400 text-slate-950" />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
-                {incomingCall.mode === "video" ? <Video className="h-4 w-4 text-amber-300" /> : <Phone className="h-4 w-4 text-amber-300" />}
-                Incoming {incomingCall.mode} call from {incomingCallerName}
+        <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-2xl overflow-hidden rounded-lg border border-[var(--chat-lime)]/35 bg-[#10170e]/95 shadow-2xl shadow-black/50 backdrop-blur-xl">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--chat-lime)] via-cyan-300 to-[var(--chat-ember)]" />
+          <div className="grid gap-4 p-4 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+            <div className="relative">
+              <div className="absolute inset-0 rounded-full bg-[var(--chat-lime)]/20 blur-xl" />
+              <UserAvatar
+                user={currentDirectUser}
+                fallback={incomingCallerName}
+                className="relative h-16 w-16 shrink-0 border-2 border-[var(--chat-lime)]/50 shadow-lg shadow-lime-500/10"
+                fallbackClassName="bg-gradient-to-br from-[var(--chat-lime)] to-cyan-300 text-xl font-black text-[var(--chat-panel)]"
+              />
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="border-0 bg-[var(--chat-lime)] px-2.5 py-1 text-[var(--chat-panel)]">
+                  {incomingCall.mode === "video" ? <Video className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
+                  Incoming {incomingCall.mode}
+                </Badge>
+                <Badge variant="outline" className="border-white/10 text-slate-300">
+                  {profileRingtone.name || "Default ringtone"}
+                </Badge>
+              </div>
+              <div className="mt-2 truncate text-xl font-black tracking-[-0.03em] text-[#fbffe8]">
+                {incomingCallerName}
               </div>
               <div className="mt-1 text-xs leading-5 text-slate-400">
-                Caller ID {incomingCall.fromUserId}. The ringtone will stop when you answer, decline, or send a quick reply.
+                {incomingCall.fromUserId}. The ringtone stops when you answer, decline, or send a quick reply.
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:flex">
-                <Button className="bg-emerald-500 text-slate-950 hover:bg-emerald-400" onClick={() => void acceptIncomingCall()}>
-                  <Phone className="mr-2 h-4 w-4" />
-                  Answer
-                </Button>
-                <Button variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCall()}>
-                  <PhoneOff className="mr-2 h-4 w-4" />
-                  Decline
-                </Button>
-                <Button variant="ghost" className="border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCallWithMessage()}>
-                  <MessageSquare className="mr-2 h-4 w-4" />
-                  Message
-                </Button>
-              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:min-w-72">
+              <Button className="h-12 rounded-full bg-[var(--chat-lime)] text-[var(--chat-panel)] hover:bg-lime-200" onClick={() => void acceptIncomingCall()}>
+                <Phone className="mr-2 h-4 w-4" />
+                Answer
+              </Button>
+              <Button variant="ghost" className="h-12 rounded-full border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCall()}>
+                <PhoneOff className="mr-2 h-4 w-4" />
+                Decline
+              </Button>
+              <Button variant="ghost" className="h-12 rounded-full border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void rejectIncomingCallWithMessage()}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Reply
+              </Button>
             </div>
           </div>
         </div>
       )}
-      <Card className="w-full shrink-0 gap-0 overflow-hidden rounded-3xl border border-white/10 bg-[#0b0f17]/95 p-0 shadow-2xl shadow-black/30 lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
-        <div className="border-b border-white/10 bg-[#0f1622] px-4 py-4">
+      <Card className="chat-panel-enter relative z-10 w-full shrink-0 gap-0 overflow-hidden rounded-lg border border-[var(--chat-line)] bg-[var(--chat-panel)]/95 p-0 shadow-[18px_0_70px_rgba(0,0,0,0.32)] backdrop-blur lg:w-[22rem] lg:rounded-none lg:border-y-0 lg:border-l-0 lg:border-r">
+        <div className="border-b border-[var(--chat-line)] bg-[var(--chat-panel-2)] px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">OCNE collaboration</div>
-              <div className="mt-1 flex items-center gap-2 text-base font-semibold text-white">
-                <MessageSquare className="h-4 w-4 text-cyan-400" />
-                Chat
+              <div className="text-[10px] font-black uppercase tracking-[0.32em] text-[var(--chat-lime)]">OCNE Signal</div>
+              <div className="mt-1 flex items-center gap-2 text-lg font-black tracking-[-0.03em] text-[#fbffe8]">
+                <MessageSquare className="h-4 w-4 text-[var(--chat-lime)]" />
+                Chat desk
               </div>
             </div>
-            <Badge className="border-0 bg-emerald-500/15 px-2.5 py-1 text-emerald-300">
+            <Badge className="border-0 bg-[var(--chat-lime)] px-2.5 py-1 text-[var(--chat-panel)]">
               <Wifi className="mr-1 h-3 w-3" />
               Live
             </Badge>
@@ -2894,7 +3172,7 @@ export default function ChatPage() {
 
         <div className="max-h-[460px] overflow-y-auto lg:max-h-none">
           <div className="space-y-5 p-3">
-            <div className="space-y-3 rounded-2xl border border-cyan-500/15 bg-[#101722] p-3 shadow-lg shadow-black/20">
+            <div className="space-y-3 rounded-lg border border-[var(--chat-line)] bg-[var(--chat-void)]/80 p-3 shadow-inner shadow-black/30">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-semibold text-white">Create room</div>
@@ -2992,11 +3270,12 @@ export default function ChatPage() {
               </div>
               <div className="mt-2 space-y-1.5">
                 <button
+                  data-active={activeRoom === "global"}
                   onClick={() => openRoom("global")}
-                  className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+                  className={`chat-nav-item flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left ${
                     activeRoom === "global"
-                      ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
-                      : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
+                      ? "border-[var(--chat-lime)]/50 bg-[var(--chat-lime)] text-[var(--chat-panel)] shadow-lg shadow-lime-500/10"
+                      : "border-transparent text-[#aeb8a3] hover:border-[var(--chat-line)] hover:bg-[#1a2118] hover:text-[#fbffe8]"
                   }`}
                 >
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-500/10">
@@ -3011,11 +3290,12 @@ export default function ChatPage() {
                 {(rooms || []).map((room) => (
                   <button
                     key={room.id}
+                    data-active={activeRoom === String(room.id)}
                     onClick={() => openRoom(String(room.id))}
-                    className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+                    className={`chat-nav-item flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left ${
                       activeRoom === String(room.id)
-                        ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
-                        : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
+                        ? "border-[var(--chat-lime)]/50 bg-[var(--chat-lime)] text-[var(--chat-panel)] shadow-lg shadow-lime-500/10"
+                        : "border-transparent text-[#aeb8a3] hover:border-[var(--chat-line)] hover:bg-[#1a2118] hover:text-[#fbffe8]"
                     }`}
                   >
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/10">
@@ -3164,11 +3444,12 @@ export default function ChatPage() {
                   return (
                     <button
                       key={thread.id}
+                      data-active={active}
                       onClick={() => openDirectMessage(thread.id)}
-                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition-all ${
+                      className={`chat-nav-item flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left ${
                         active
-                          ? "border-cyan-500/30 bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/10"
-                          : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
+                          ? "border-[var(--chat-lime)]/50 bg-[var(--chat-lime)] text-[var(--chat-panel)] shadow-lg shadow-lime-500/10"
+                          : "border-transparent text-[#aeb8a3] hover:border-[var(--chat-line)] hover:bg-[#1a2118] hover:text-[#fbffe8]"
                       }`}
                     >
                       <UserAvatar user={{ id: thread.id, name: thread.label, avatar: thread.avatar }} className="h-8 w-8" fallbackClassName="bg-gradient-to-br from-violet-500 to-cyan-600 text-[10px] text-white" />
@@ -3258,16 +3539,16 @@ export default function ChatPage() {
         </div>
       </Card>
 
-      <div className="min-w-0 flex-1">
-        <Card className="min-h-full gap-0 overflow-visible rounded-3xl border border-white/10 bg-[#080b12] p-0 shadow-2xl shadow-black/30 lg:rounded-none lg:border-y-0 lg:border-r-0">
-          <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/96 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
+      <div className="relative z-10 min-w-0 flex-1">
+        <Card className="chat-main-enter min-h-full gap-0 overflow-visible rounded-lg border border-[var(--chat-line)] bg-[var(--chat-panel)]/94 p-0 shadow-[0_18px_80px_rgba(0,0,0,0.32)] backdrop-blur lg:rounded-none lg:border-y-0 lg:border-r-0">
+          <div className="sticky top-0 z-10 border-b border-[var(--chat-line)] bg-[var(--chat-panel-2)]/96 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <UserAvatar user={currentDirectUser || activeRoomCreator} fallback={roomName} className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12" fallbackClassName="bg-[#1d9bf0] text-white" />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="truncate text-lg font-semibold text-white sm:text-xl">{roomName}</h2>
-                    <Badge className={`rounded-full border-0 ${directRecipientId ? "bg-[#1d9bf0]/15 text-[#8ecdf8]" : "bg-emerald-500/15 text-emerald-300"}`}>
+                    <h2 className="truncate text-2xl font-black tracking-[-0.04em] text-[#fbffe8] sm:text-3xl">{roomName}</h2>
+                    <Badge className={`rounded-full border-0 ${directRecipientId ? "bg-[var(--chat-ember)]/15 text-[#ffb28c]" : "bg-[var(--chat-lime)]/15 text-[var(--chat-lime)]"}`}>
                       {directRecipientId ? "Direct message" : "Always-on"}
                     </Badge>
                     {!directRecipientId && (
@@ -3594,29 +3875,29 @@ export default function ChatPage() {
                 </div>
               </div>
 
-              <div className="order-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0b0f17] shadow-xl shadow-black/25">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-[#101722] px-3 py-3 sm:px-4">
+              <div className="chat-ledger order-1 overflow-hidden rounded-lg border border-[#d7d0b4] bg-[var(--chat-paper)] text-[var(--chat-ink)] shadow-[0_20px_70px_rgba(0,0,0,0.30)]">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d7d0b4] bg-[var(--chat-paper-2)] px-3 py-3 sm:px-4">
                   <div>
-                    <div className="text-sm font-semibold text-white">{directRecipientId ? "Private conversation" : "Room conversation"}</div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="chat-ledger-title text-sm font-black uppercase tracking-[0.14em] text-[var(--chat-ink)]">{directRecipientId ? "Private ledger" : "Dispatch ledger"}</div>
+                    <div className="text-[11px] text-[var(--chat-muted)]">
                       Messages, files, call notes, polls, and code context stay together here.
                     </div>
                   </div>
-                  <Badge variant="outline" className="border-white/10 text-slate-300">
+                  <Badge variant="outline" className="border-[#bbb393] bg-[#fffaf0] text-[#4c513f]">
                     {participants.length} active
                   </Badge>
                 </div>
-                <ScrollArea className="h-[58vh] min-h-[380px] bg-[#080b12] px-3 py-4 sm:px-4 lg:h-[560px]">
+                <ScrollArea className="h-[58vh] min-h-[380px] bg-[var(--chat-paper)] bg-[linear-gradient(rgba(26,29,21,0.055)_1px,transparent_1px)] bg-[size:100%_32px] px-3 py-4 sm:px-4 lg:h-[560px]">
                   <div className="space-y-4">
                     {messageSearch.trim().length > 1 && (
-                      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/[0.06] px-4 py-3 text-xs text-cyan-100">
+                      <div className="rounded-lg border border-[#c8b35e] bg-[#fff4bd] px-4 py-3 text-xs font-semibold text-[#584813]">
                         Showing search results for "{messageSearch.trim()}" in this {directRecipientId ? "private thread" : "room"}.
                       </div>
                     )}
                     {streamEntries.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-6 py-14 text-center">
-                        <MessageSquare className="mx-auto h-8 w-8 text-slate-600" />
-                        <p className="mt-3 text-sm text-slate-500">
+                      <div className="rounded-lg border border-dashed border-[#b9b091] bg-[#fffaf0] px-6 py-14 text-center">
+                        <MessageSquare className="mx-auto h-8 w-8 text-[#8b876e]" />
+                        <p className="mt-3 text-sm text-[var(--chat-muted)]">
                           {messageSearch.trim().length > 1
                             ? "No messages matched this search yet."
                             : "Start the room with a snippet, guest link, poll, or meeting note."}
@@ -3627,18 +3908,18 @@ export default function ChatPage() {
                       const isMe = String(entry.message.senderId) === String(user?.id);
                       const isSpeaker = entry.sender?.id === speakerId;
                       return (
-                        <div key={entry.message.id} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
+                        <div key={entry.message.id} className={`chat-message-row flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
                           <UserAvatar user={entry.sender} className="h-10 w-10 flex-shrink-0 border border-white/10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] text-white" />
                           <div className="max-w-[min(82%,42rem)]">
-                            <div className={`mb-1 flex items-center gap-2 text-[11px] text-slate-500 ${isMe ? "justify-end" : ""}`}>
-                              {!isMe && <span>{entry.sender?.name || entry.sender?.username || "User"}</span>}
-                              {isSpeaker && <Badge className="border-0 bg-emerald-500/15 text-[10px] text-emerald-300">Speaker</Badge>}
+                            <div className={`chat-message-meta mb-1 flex items-center gap-2 text-[11px] text-[#6f715f] ${isMe ? "justify-end" : ""}`}>
+                              {!isMe && <span className="font-semibold text-[#4c513f]">{entry.sender?.name || entry.sender?.username || "User"}</span>}
+                              {isSpeaker && <Badge className="border-0 bg-[var(--chat-lime)] text-[10px] text-[var(--chat-ink)]">Speaker</Badge>}
                               <span>{new Date(entry.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             </div>
-                            <div className={`rounded-2xl border px-4 py-3 text-sm leading-relaxed shadow-md ${
+                            <div className={`chat-message-bubble rounded-lg border px-4 py-3 text-sm leading-relaxed shadow-[0_10px_36px_rgba(0,0,0,0.22)] ${
                               isMe
-                                ? "border-cyan-400/30 bg-cyan-400 text-slate-950 shadow-cyan-500/10"
-                                : "border-white/10 bg-[#111827] text-slate-100 shadow-black/20"
+                                ? "border-[var(--chat-ink)] bg-[var(--chat-ink)] text-[#fbffe8]"
+                                : "border-[#cfc5a7] bg-[#fffaf0] text-[#25271f]"
                             }`}>
                               <div className="whitespace-pre-wrap break-words">{entry.message.content}</div>
                               {renderStructured(entry)}
@@ -3650,18 +3931,18 @@ export default function ChatPage() {
                     <div ref={bottomRef} />
                   </div>
                 </ScrollArea>
-                <div className="border-t border-white/10 bg-[#0b0f17] px-3 py-4 sm:px-4">
+                <div className="border-t border-[#d7d0b4] bg-[var(--chat-paper-2)] px-3 py-4 sm:px-4">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <Input
                       value={messageSearch}
                       onChange={(e) => setMessageSearch(e.target.value)}
                       placeholder={directRecipientId ? "Search this private thread..." : "Search this room history..."}
-                      className="h-10 max-w-sm rounded-full border-white/10 bg-white/[0.04] text-white placeholder:text-slate-600 focus-visible:ring-cyan-500/40"
+                      className="h-10 max-w-sm rounded-full border-[#cfc5a7] bg-[#fffaf0] text-[#25271f] placeholder:text-[#8b876e] focus-visible:ring-[var(--chat-ink)]/20"
                     />
                     {messageSearch.trim().length > 0 && (
                       <Button
                         variant="ghost"
-                        className="rounded-full border border-white/10 text-slate-200 hover:bg-white/[0.06]"
+                        className="rounded-full border border-[#cfc5a7] text-[#25271f] hover:bg-[#fffaf0]"
                         onClick={() => setMessageSearch("")}
                       >
                         Clear search
@@ -3669,7 +3950,7 @@ export default function ChatPage() {
                     )}
                   </div>
                   {typingLabel && (
-                    <div className="mb-3 text-xs text-cyan-300">{typingLabel}</div>
+                    <div className="chat-message-meta mb-3 text-xs font-black uppercase tracking-[0.12em] text-[#4c513f]">{typingLabel}</div>
                   )}
                   <input
                     ref={fileInputRef}
@@ -3696,10 +3977,10 @@ export default function ChatPage() {
                       event.target.value = "";
                     }}
                   />
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 shadow-inner shadow-black/20 focus-within:border-cyan-400/40">
+                  <div className="rounded-lg border border-[#cfc5a7] bg-[#fffaf0] p-3 shadow-inner shadow-[#d0c4a3]/50 focus-within:border-[var(--chat-ink)]/50">
                     <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                      <span className="text-xs font-semibold text-slate-300">Write a message</span>
-                      <span className="text-[10px] uppercase tracking-[0.14em] text-slate-600">
+                      <span className="chat-message-meta text-xs font-black uppercase tracking-[0.12em] text-[#4c513f]">Write a message</span>
+                      <span className="chat-message-meta text-[10px] uppercase tracking-[0.14em] text-[#8b876e]">
                         {directRecipientId ? "Private" : "Room"}
                       </span>
                     </div>
@@ -3707,7 +3988,7 @@ export default function ChatPage() {
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
                       placeholder={directRecipientId ? `Message ${roomName}...` : "Message the room, paste code, share context, or post a call update..."}
-                      className="min-h-[88px] resize-none border-0 bg-transparent text-white placeholder:text-slate-600 focus-visible:ring-0"
+                      className="min-h-[88px] resize-none border-0 bg-transparent text-[#25271f] placeholder:text-[#8b876e] focus-visible:ring-0"
                     />
                   </div>
                   <div className="mt-3 grid gap-3 sm:flex sm:items-center sm:justify-between">
@@ -3715,7 +3996,7 @@ export default function ChatPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                        className="rounded-full border border-[#cfc5a7] text-[#4c513f] hover:bg-[#fffaf0]"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isUploadingAttachment}
                       >
@@ -3725,7 +4006,7 @@ export default function ChatPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+                        className="rounded-full border border-[#cfc5a7] text-[#4c513f] hover:bg-[#fffaf0]"
                         onClick={() => photoInputRef.current?.click()}
                         disabled={isUploadingAttachment}
                       >
@@ -3733,12 +4014,12 @@ export default function ChatPage() {
                         Photo
                       </Button>
                       {["++1", "ship it", "need review"].map((emoji) => (
-                        <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]" onClick={() => setReaction(emoji)}>
+                        <Button key={emoji} size="sm" variant="ghost" className="rounded-full border border-[#cfc5a7] text-[#4c513f] hover:bg-[#fffaf0]" onClick={() => setReaction(emoji)}>
                           {emoji}
                         </Button>
                       ))}
                     </div>
-                    <Button onClick={handleSend} disabled={!messageText.trim() || sendMessage.isPending} className="min-h-10 rounded-full bg-cyan-400 px-5 text-slate-950 hover:bg-cyan-300">
+                    <Button onClick={handleSend} disabled={!messageText.trim() || sendMessage.isPending} className="chat-send-button min-h-10 rounded-full bg-[var(--chat-ink)] px-5 font-black text-[#fbffe8] hover:bg-[#303526]">
                       <Send className="mr-2 h-4 w-4" />
                       {isUploadingAttachment ? "Uploading..." : "Send"}
                     </Button>
@@ -4412,6 +4693,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-
-

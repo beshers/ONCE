@@ -7,14 +7,18 @@ import {
   FileCode2,
   FolderOpen,
   Mail,
+  Music,
   RotateCcw,
   Save,
   UserRound,
+  Volume2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfileRingtone } from "@/hooks/useProfileRingtone";
 import { getStoredProfileAvatar, getUserInitial, setStoredProfileAvatar } from "@/lib/profileAvatar";
+import { setStoredProfileRingtone } from "@/lib/profileRingtone";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const MAX_LOCAL_AVATAR_BYTES = 1024 * 1024;
+const MAX_RINGTONE_BYTES = 3 * 1024 * 1024;
 
 function formatDate(value?: Date | string | null) {
   if (!value) return "Not yet";
@@ -54,12 +59,16 @@ export default function ProfilePage() {
   const { user, refresh } = useAuth();
   const utils = trpc.useUtils();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const ringtoneInputRef = useRef<HTMLInputElement | null>(null);
+  const ringtonePreviewRef = useRef<HTMLAudioElement | null>(null);
+  const ringtone = useProfileRingtone(user?.id);
   const [name, setName] = useState(user?.name || "");
   const [username, setUsername] = useState(user?.username || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar || "");
   const [message, setMessage] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [ringtoneError, setRingtoneError] = useState<string | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareText, setShareText] = useState("");
 
@@ -137,6 +146,43 @@ export default function ProfilePage() {
     setMessage("Local profile photo removed.");
   };
 
+  const handleRingtoneChange = async (file?: File) => {
+    if (!user || !file) return;
+    setRingtoneError(null);
+    setMessage(null);
+
+    if (!file.type.startsWith("audio/")) {
+      setRingtoneError("Choose an audio file.");
+      return;
+    }
+
+    if (file.size > MAX_RINGTONE_BYTES) {
+      setRingtoneError("Use an audio file smaller than 3 MB.");
+      return;
+    }
+
+    const dataUrl = await readFileAsDataUrl(file);
+    const saved = setStoredProfileRingtone(user.id, dataUrl, file.name);
+    setMessage(saved ? "Incoming call ringtone updated." : "The browser could not save this ringtone.");
+  };
+
+  const handlePreviewRingtone = async () => {
+    if (!ringtone.url) return;
+    ringtonePreviewRef.current?.pause();
+    ringtonePreviewRef.current = new Audio(ringtone.url);
+    ringtonePreviewRef.current.volume = 0.8;
+    await ringtonePreviewRef.current.play().catch(() => {
+      setRingtoneError("Browser blocked the ringtone preview. Try again after clicking the page.");
+    });
+  };
+
+  const handleRemoveRingtone = () => {
+    if (!user) return;
+    ringtonePreviewRef.current?.pause();
+    setStoredProfileRingtone(user.id, null);
+    setMessage("Custom ringtone removed.");
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
@@ -207,9 +253,9 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {(message || photoError) && (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${photoError ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"}`}>
-          {photoError || message}
+      {(message || photoError || ringtoneError) && (
+        <div className={`rounded-lg border px-4 py-3 text-sm ${photoError || ringtoneError ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"}`}>
+          {photoError || ringtoneError || message}
         </div>
       )}
 
@@ -246,6 +292,49 @@ export default function ProfilePage() {
                   <Save className="mr-2 h-4 w-4" />
                   {updateProfile.isPending ? "Saving..." : "Save Profile"}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-lg border-white/10 bg-[#10101a] text-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Music className="h-5 w-5 text-cyan-300" />
+                Incoming Call Ringtone
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <input
+                ref={ringtoneInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={(event) => void handleRingtoneChange(event.target.files?.[0])}
+              />
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-white">{ringtone.name || "Default OCNE ringtone"}</p>
+                    <p className="mt-1 text-xs text-slate-500">Used when someone calls you in OCNE Chat on this device.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {ringtone.url && (
+                      <Button variant="ghost" onClick={() => void handlePreviewRingtone()} className="border border-white/10 text-slate-200 hover:bg-white/10">
+                        <Volume2 className="mr-2 h-4 w-4" />
+                        Preview
+                      </Button>
+                    )}
+                    <Button onClick={() => ringtoneInputRef.current?.click()} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
+                      <Music className="mr-2 h-4 w-4" />
+                      Choose Sound
+                    </Button>
+                    {ringtone.url && (
+                      <Button variant="outline" onClick={handleRemoveRingtone} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
+                        Default
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
