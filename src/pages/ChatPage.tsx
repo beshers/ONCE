@@ -24,6 +24,7 @@ import {
   Maximize2,
   MessageSquare,
   Mic,
+  Minimize2,
   MonitorUp,
   Phone,
   PhoneOff,
@@ -336,6 +337,7 @@ export default function ChatPage() {
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
   const [callScreenMusicPlaying, setCallScreenMusicPlaying] = useState(false);
+  const [callScreenMinimized, setCallScreenMinimized] = useState(false);
   const [remoteMediaState, setRemoteMediaState] = useState({ muted: false, cameraOff: false, held: false });
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>("new");
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>("new");
@@ -1070,14 +1072,20 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (callState === "outgoing" || callState === "connecting") {
+    if (directCallActive) {
       playCallScreenMusic(false);
       return;
     }
-    if (callState === "idle" || callState === "incoming" || callState === "connected") {
+    if (callState === "idle" || callState === "incoming") {
       stopCallScreenMusic();
     }
-  }, [callState]);
+  }, [callState, directCallActive]);
+
+  useEffect(() => {
+    if (!directCallActive) {
+      setCallScreenMinimized(false);
+    }
+  }, [directCallActive]);
 
   useEffect(() => {
     if (!browserNotificationsEnabled || typeof window === "undefined" || !("Notification" in window)) return;
@@ -4385,7 +4393,14 @@ export default function ChatPage() {
                   </div>
 
                   {directCallActive && (
-                    <div className="mt-4 overflow-hidden rounded-3xl border border-cyan-400/20 bg-[#050914] shadow-2xl shadow-cyan-950/20" style={{ animation: "callStageIn 360ms ease-out both" }}>
+                    <div
+                      className={
+                        callScreenMinimized
+                          ? "fixed bottom-4 right-4 z-50 w-[min(420px,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-cyan-400/20 bg-[#050914] shadow-2xl shadow-black/60"
+                          : "fixed inset-0 z-50 overflow-y-auto border border-cyan-400/20 bg-[#050914] shadow-2xl shadow-cyan-950/20"
+                      }
+                      style={{ animation: "callStageIn 360ms ease-out both" }}
+                    >
                       <div className="flex flex-col gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="relative">
@@ -4419,33 +4434,66 @@ export default function ChatPage() {
                             <div className="text-xs text-slate-500">{callHealthMessage}</div>
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[330px]">
-                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Quality</div>
-                            <div className={`mt-1 text-sm font-semibold ${
-                              callStats.quality === "good"
-                                ? "text-emerald-300"
-                                : callStats.quality === "fair"
-                                  ? "text-amber-200"
-                                  : callStats.quality === "poor"
-                                    ? "text-red-200"
-                                    : "text-white"
-                            }`}>
-                              {callStats.quality}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {!callScreenMinimized && (
+                            <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[330px]">
+                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Quality</div>
+                                <div className={`mt-1 text-sm font-semibold ${
+                                  callStats.quality === "good"
+                                    ? "text-emerald-300"
+                                    : callStats.quality === "fair"
+                                      ? "text-amber-200"
+                                      : callStats.quality === "poor"
+                                        ? "text-red-200"
+                                        : "text-white"
+                                }`}>
+                                  {callStats.quality}
+                                </div>
+                              </div>
+                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">ICE</div>
+                                <div className="mt-1 truncate text-sm font-semibold text-white">{iceConnectionState}</div>
+                              </div>
+                              <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">RTT</div>
+                                <div className="mt-1 text-sm font-semibold text-white">{callStats.rttMs ?? "--"} ms</div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">ICE</div>
-                            <div className="mt-1 truncate text-sm font-semibold text-white">{iceConnectionState}</div>
-                          </div>
-                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">RTT</div>
-                            <div className="mt-1 text-sm font-semibold text-white">{callStats.rttMs ?? "--"} ms</div>
-                          </div>
+                          )}
+                          <Button
+                            variant="ghost"
+                            className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10"
+                            onClick={() => setCallScreenMinimized((value) => !value)}
+                          >
+                            {callScreenMinimized ? <Maximize2 className="mr-2 h-4 w-4" /> : <Minimize2 className="mr-2 h-4 w-4" />}
+                            {callScreenMinimized ? "Full screen" : "Small"}
+                          </Button>
                         </div>
                       </div>
 
-                      <div className="relative min-h-[380px] bg-black md:min-h-[520px]">
+                      {callScreenMinimized && (
+                        <div className="flex flex-wrap gap-2 border-b border-white/10 bg-[#070b12] px-4 py-3">
+                          <Button
+                            variant="ghost"
+                            className={callScreenMusicPlaying ? "rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"}
+                            onClick={toggleCallScreenMusic}
+                          >
+                            <Volume2 className="mr-2 h-4 w-4" />
+                            {callScreenMusicPlaying ? "Music on" : "Music"}
+                          </Button>
+                          <Button variant="ghost" className={isMuted ? "rounded-full border border-red-500/30 bg-red-500/10 text-red-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"} onClick={toggleMute}>
+                            <Mic className="mr-2 h-4 w-4" />
+                            {isMuted ? "Unmute" : "Mute"}
+                          </Button>
+                          <Button className="rounded-full bg-red-500 text-white hover:bg-red-400" onClick={() => void cleanupActiveCall(true)}>
+                            <PhoneOff className="mr-2 h-4 w-4" />
+                            Hang up
+                          </Button>
+                        </div>
+                      )}
+
+                      <div className={`relative min-h-[380px] bg-black md:min-h-[520px] ${callScreenMinimized ? "hidden" : ""}`}>
                         <video
                           ref={remoteVideoRef}
                           autoPlay
@@ -4532,7 +4580,7 @@ export default function ChatPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-col gap-3 border-t border-white/10 bg-[#070b12] p-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className={`flex flex-col gap-3 border-t border-white/10 bg-[#070b12] p-3 lg:flex-row lg:items-center lg:justify-between ${callScreenMinimized ? "hidden" : ""}`}>
                         <div className="flex flex-wrap gap-2">
                           <Button variant="ghost" className={isMuted ? "rounded-full border border-red-500/30 bg-red-500/10 text-red-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"} onClick={toggleMute}>
                             <Mic className="mr-2 h-4 w-4" />
