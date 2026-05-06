@@ -1722,6 +1722,7 @@ export default function ChatPage() {
 
     cleanupPromiseRef.current = (async () => {
       stopRingtone();
+      stopCallScreenMusic();
       if (missedCallTimerRef.current) {
         window.clearTimeout(missedCallTimerRef.current);
         missedCallTimerRef.current = null;
@@ -1749,6 +1750,9 @@ export default function ChatPage() {
       }
       pendingIceCandidatesRef.current = [];
 
+      if (cleanupScreenTrack) {
+        cleanupScreenTrack.onended = null;
+      }
       cleanupScreenTrack?.stop();
       if (pendingScreenTrackRef.current === cleanupScreenTrack) {
         pendingScreenTrackRef.current = null;
@@ -1768,10 +1772,10 @@ export default function ChatPage() {
         remoteStreamRef.current = null;
       }
 
-      if (localVideoRef.current && localVideoRef.current.srcObject === cleanupLocalStream) {
+      if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
       }
-      if (remoteVideoRef.current && remoteVideoRef.current.srcObject === cleanupRemoteStream) {
+      if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
       }
 
@@ -1798,6 +1802,7 @@ export default function ChatPage() {
       setRoomMediaMode("idle");
       setIceConnectionState("new");
       setPeerConnectionState("new");
+      setCallHealthMessage("Call ended. Start a new call when both sides are ready.");
       outgoingCallPeerRef.current = null;
       iceRestartAttemptsRef.current = 0;
       lastRemoteHeartbeatRef.current = null;
@@ -2196,6 +2201,7 @@ export default function ChatPage() {
   }
 
   async function toggleScreenShare() {
+    if (isCleaningUpCallRef.current) return;
     const pc = peerConnectionRef.current;
     if (!pc) {
       setActionError("Start or accept a video call before sharing your screen in a direct message.");
@@ -2227,6 +2233,7 @@ export default function ChatPage() {
     }
     pendingScreenTrackRef.current = displayTrack;
     displayTrack.onended = () => {
+      if (isCleaningUpCallRef.current) return;
       void toggleScreenShare();
     };
     setIsSharingScreen(true);
