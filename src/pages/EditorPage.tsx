@@ -134,6 +134,8 @@ type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 const AGENT_COMMAND_KEY = "ocne-agent-command";
 const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
+const DATABASE_AUTOSAVE_DELAY_MS = 800;
+const BACKGROUND_FILE_REFRESH_MS = 15000;
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -194,7 +196,7 @@ export default function EditorPage() {
     { projectId: projectId! },
     {
       enabled: !!projectId,
-      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : false,
+      refetchInterval: project?.collaborationMode && project.collaborationMode !== "solo" ? 5000 : BACKGROUND_FILE_REFRESH_MS,
     }
   );
   const { data: versions } = trpc.project.versions.useQuery(
@@ -232,12 +234,12 @@ export default function EditorPage() {
       const currentLocalDraft = readStoredDraft(projectId, variables.id);
       const hasNewerLocalDraft = currentLocalDraft !== null && currentLocalDraft !== variables.content;
       if (saveIntentRef.current === "manual") {
-        toast.success("Code saved!");
+        toast.success("Code saved to database.");
       }
       setSavedCodeByFileId((current) => ({ ...current, [variables.id]: variables.content }));
       setSaveStatus(hasNewerLocalDraft ? "unsaved" : "saved");
       setLastSavedAt(new Date());
-      setSaveMessage(hasNewerLocalDraft ? "Saved latest synced version. New edits are still waiting." : "Code saved successfully.");
+      setSaveMessage(hasNewerLocalDraft ? "Saved latest synced version. New edits are still waiting." : "Saved to database and this browser.");
       if (saveIntentRef.current === "manual") {
         setCommitMessage("");
       }
@@ -502,7 +504,7 @@ export default function EditorPage() {
     if (saveFile.isPending) {
       queuedSaveIntentRef.current = intent;
       setSaveStatus("queued");
-      setSaveMessage("Save queued. OCNE will sync the latest code next.");
+      setSaveMessage("Database sync queued. OCNE will upload the latest code next.");
       writeStoredDraft(projectId, activeFileId, code);
       return;
     }
@@ -537,6 +539,13 @@ export default function EditorPage() {
     void saveActiveFile("manual").catch(() => undefined);
   };
 
+  const openProjectFile = useCallback((nextFileId: number) => {
+    if (activeFileId && activeFile && isModified) {
+      void saveActiveFile("auto").catch(() => undefined);
+    }
+    setActiveFileId(nextFileId);
+  }, [activeFile, activeFileId, isModified, saveActiveFile]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
@@ -566,7 +575,7 @@ export default function EditorPage() {
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        persistCurrentDraft();
+        flushLiveSave();
       }
     };
     const flushLiveSave = () => {
@@ -576,11 +585,11 @@ export default function EditorPage() {
     };
 
     window.addEventListener("blur", flushLiveSave);
-    window.addEventListener("pagehide", persistCurrentDraft);
+    window.addEventListener("pagehide", flushLiveSave);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("blur", flushLiveSave);
-      window.removeEventListener("pagehide", persistCurrentDraft);
+      window.removeEventListener("pagehide", flushLiveSave);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [activeFile, activeFileId, code, isModified, projectId, saveActiveFile]);
@@ -590,7 +599,7 @@ export default function EditorPage() {
 
     const timer = window.setTimeout(() => {
       void saveActiveFile("auto").catch(() => undefined);
-    }, 1500);
+    }, DATABASE_AUTOSAVE_DELAY_MS);
 
     return () => window.clearTimeout(timer);
   }, [activeFileId, activeFile, code, isModified, project?.collaborationMode, saveActiveFile]);
@@ -599,12 +608,13 @@ export default function EditorPage() {
     if (!activeFileId || !isModified) return;
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       writeStoredDraft(projectId, activeFileId, code);
+      void saveActiveFile("auto").catch(() => undefined);
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [activeFileId, code, isModified, projectId]);
+  }, [activeFileId, code, isModified, projectId, saveActiveFile]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -623,7 +633,7 @@ export default function EditorPage() {
     localStorage.setItem(AGENT_COMMAND_KEY, command);
     localStorage.setItem(AGENT_AUTOCONNECT_KEY, "true");
     window.dispatchEvent(new Event("ocne-agent-run-request"));
-    if (activeFile && isModified && !saveFile.isPending) {
+    if (activeFile && isModified) {
       void saveActiveFile("manual").catch(() => undefined);
     }
     if (project?.localFilesEnabled) {
@@ -642,7 +652,7 @@ export default function EditorPage() {
   };
 
   const createShareLink = async () => {
-    if (activeFile && !saveFile.isPending) {
+    if (activeFile) {
       await saveActiveFile("manual").catch(() => undefined);
     }
     const title = project?.name ? `OCNE project: ${project.name}` : "OCNE project";
@@ -922,7 +932,7 @@ export default function EditorPage() {
               if (isFolder) {
                 toggleFolder(item.id);
               } else {
-                setActiveFileId(item.id);
+                openProjectFile(item.id);
               }
             }}
           >
