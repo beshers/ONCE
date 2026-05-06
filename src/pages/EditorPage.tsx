@@ -62,6 +62,40 @@ function clearStoredDraft(projectId: number | undefined, fileId: number | null) 
   }
 }
 
+type StoredEditorSession = {
+  lineNumber?: number;
+  column?: number;
+  scrollTop?: number;
+  scrollLeft?: number;
+  updatedAt?: number;
+};
+
+function editorSessionStorageKey(projectId: number | undefined, fileId: number | null) {
+  return `ocne:project:${projectId || "new"}:file:${fileId || "none"}:editor-session`;
+}
+
+function readEditorSession(projectId: number | undefined, fileId: number | null): StoredEditorSession | null {
+  if (!projectId || !fileId) return null;
+  try {
+    const stored = localStorage.getItem(editorSessionStorageKey(projectId, fileId));
+    return stored ? JSON.parse(stored) as StoredEditorSession : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeEditorSession(projectId: number | undefined, fileId: number | null, session: StoredEditorSession) {
+  if (!projectId || !fileId) return;
+  try {
+    localStorage.setItem(
+      editorSessionStorageKey(projectId, fileId),
+      JSON.stringify({ ...session, updatedAt: Date.now() }),
+    );
+  } catch {
+    // Draft restore still works when session-position storage is unavailable.
+  }
+}
+
 function editorStateStorageKey(projectId: number | undefined) {
   return `ocne:project:${projectId || "new"}:editor-state`;
 }
@@ -147,6 +181,8 @@ export default function EditorPage() {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const saveIntentRef = useRef<SaveIntent>("manual");
   const queuedSaveIntentRef = useRef<SaveIntent | null>(null);
+  const editorSessionDisposablesRef = useRef<Array<{ dispose: () => void }>>([]);
+  const editorSessionSaveTimerRef = useRef<number | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -450,6 +486,17 @@ export default function EditorPage() {
     return () => window.clearTimeout(timer);
   }, [saveMessage]);
 
+  useEffect(() => {
+    return () => {
+      editorSessionDisposablesRef.current.forEach((disposable) => disposable.dispose());
+      editorSessionDisposablesRef.current = [];
+      if (editorSessionSaveTimerRef.current) {
+        window.clearTimeout(editorSessionSaveTimerRef.current);
+        editorSessionSaveTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const saveActiveFile = useCallback(async (intent: SaveIntent = "manual") => {
     if (!activeFileId || !activeFile) return;
     if (saveFile.isPending) {
@@ -687,8 +734,68 @@ export default function EditorPage() {
   };
 
   const handleEditorReady = useCallback((editor: Monaco.editor.IStandaloneCodeEditor | null) => {
+    editorSessionDisposablesRef.current.forEach((disposable) => disposable.dispose());
+    editorSessionDisposablesRef.current = [];
+    if (editorSessionSaveTimerRef.current) {
+      window.clearTimeout(editorSessionSaveTimerRef.current);
+      editorSessionSaveTimerRef.current = null;
+    }
+
     editorRef.current = editor;
-  }, []);
+    if (!editor || !projectId || !activeFileId) return;
+
+    const saveEditorSession = () => {
+      if (editorSessionSaveTimerRef.current) {
+        window.clearTimeout(editorSessionSaveTimerRef.current);
+      }
+      editorSessionSaveTimerRef.current = window.setTimeout(() => {
+        const position = editor.getPosition();
+        writeEditorSession(projectId, activeFileId, {
+          lineNumber: position?.lineNumber,
+          column: position?.column,
+          scrollTop: editor.getScrollTop(),
+          scrollLeft: editor.getScrollLeft(),
+        });
+      }, 120);
+    };
+
+    const storedSession = readEditorSession(projectId, activeFileId);
+    if (storedSession) {
+      window.setTimeout(() => {
+        const model = editor.getModel();
+        const lineCount = model?.getLineCount() || 1;
+        const lineNumber = Math.min(Math.max(1, storedSession.lineNumber || 1), lineCount);
+        const maxColumn = model?.getLineMaxColumn(lineNumber) || 1;
+        const column = Math.min(Math.max(1, storedSession.column || 1), maxColumn);
+        editor.setPosition({ lineNumber, column });
+        editor.revealPositionInCenterIfOutsideViewport({ lineNumber, column });
+        if (typeof storedSession.scrollTop === "number") {
+          editor.setScrollTop(storedSession.scrollTop);
+        }
+        if (typeof storedSession.scrollLeft === "number") {
+          editor.setScrollLeft(storedSession.scrollLeft);
+        }
+        editor.focus();
+      }, 0);
+    }
+
+    editorSessionDisposablesRef.current = [
+      editor.onDidChangeCursorPosition(saveEditorSession),
+      editor.onDidScrollChange(saveEditorSession),
+      editor.onDidChangeModelContent(saveEditorSession),
+      {
+        dispose: () => {
+          const position = editor.getPosition();
+          writeEditorSession(projectId, activeFileId, {
+            lineNumber: position?.lineNumber,
+            column: position?.column,
+            scrollTop: editor.getScrollTop(),
+            scrollLeft: editor.getScrollLeft(),
+          });
+        },
+      },
+    ];
+  }, [activeFileId, projectId]);
 
   const openCreateDialog = (parentId: number | null = null, type: "file" | "folder" = "file") => {
     setNewItemType(type);
