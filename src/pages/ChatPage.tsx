@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { enableWebSockets, trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfileRingtone } from "@/hooks/useProfileRingtone";
+import callScreenMusicUrl from "@/Willkommen_bei_O_N_C_E.mp3";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -322,6 +323,7 @@ export default function ChatPage() {
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneTimerRef = useRef<number | null>(null);
   const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
+  const callScreenMusicAudioRef = useRef<HTMLAudioElement | null>(null);
   const missedCallTimerRef = useRef<number | null>(null);
   const isCleaningUpCallRef = useRef(false);
   const cleanupPromiseRef = useRef<Promise<void> | null>(null);
@@ -334,6 +336,7 @@ export default function ChatPage() {
   const [hasLocalStream, setHasLocalStream] = useState(false);
   const [hasRemoteStream, setHasRemoteStream] = useState(false);
   const [callSoundsReady, setCallSoundsReady] = useState(false);
+  const [callScreenMusicPlaying, setCallScreenMusicPlaying] = useState(false);
   const [remoteMediaState, setRemoteMediaState] = useState({ muted: false, cameraOff: false, held: false });
   const [iceConnectionState, setIceConnectionState] = useState<RTCIceConnectionState>("new");
   const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState>("new");
@@ -799,6 +802,38 @@ export default function ChatPage() {
     }
   }
 
+  function stopCallScreenMusic() {
+    if (callScreenMusicAudioRef.current) {
+      callScreenMusicAudioRef.current.pause();
+      callScreenMusicAudioRef.current.currentTime = 0;
+      callScreenMusicAudioRef.current = null;
+    }
+    setCallScreenMusicPlaying(false);
+  }
+
+  function playCallScreenMusic(manual = false) {
+    if (typeof window === "undefined" || callScreenMusicAudioRef.current) return;
+    const audio = new Audio(callScreenMusicUrl);
+    audio.loop = true;
+    audio.volume = manual ? 0.55 : 0.38;
+    callScreenMusicAudioRef.current = audio;
+    void audio.play().then(() => {
+      setCallScreenMusicPlaying(true);
+    }).catch(() => {
+      callScreenMusicAudioRef.current = null;
+      setCallScreenMusicPlaying(false);
+      setCallHealthMessage("Browser blocked the OCNE call-screen music until the page receives a user click.");
+    });
+  }
+
+  function toggleCallScreenMusic() {
+    if (callScreenMusicAudioRef.current) {
+      stopCallScreenMusic();
+      return;
+    }
+    playCallScreenMusic(true);
+  }
+
   function playRingtone(mode: "voice" | "video" | "screen") {
     if (typeof window === "undefined" || ringtoneTimerRef.current) return;
     if (profileRingtone.url) {
@@ -1024,6 +1059,7 @@ export default function ChatPage() {
   useEffect(() => {
     return () => {
       stopRingtone();
+      stopCallScreenMusic();
       if (deviceTestTimerRef.current) {
         window.clearTimeout(deviceTestTimerRef.current);
       }
@@ -1033,6 +1069,16 @@ export default function ChatPage() {
       void ringtoneContextRef.current?.close().catch(() => undefined);
     };
   }, []);
+
+  useEffect(() => {
+    if (callState === "outgoing" || callState === "connecting") {
+      playCallScreenMusic(false);
+      return;
+    }
+    if (callState === "idle" || callState === "incoming" || callState === "connected") {
+      stopCallScreenMusic();
+    }
+  }, [callState]);
 
   useEffect(() => {
     if (!browserNotificationsEnabled || typeof window === "undefined" || !("Notification" in window)) return;
@@ -4362,6 +4408,10 @@ export default function ChatPage() {
                                 )}
                                 {directCallModeLabel}
                               </Badge>
+                              <Badge variant="outline" className="border-cyan-400/20 text-cyan-200">
+                                <Volume2 className="mr-1.5 h-3.5 w-3.5" />
+                                OCNE music {callScreenMusicPlaying ? "on" : "ready"}
+                              </Badge>
                             </div>
                             <div className="mt-1 truncate text-lg font-semibold text-white">{roomName}</div>
                             <div className="text-xs text-slate-500">{callHealthMessage}</div>
@@ -4507,6 +4557,14 @@ export default function ChatPage() {
                           <Button variant="ghost" className={isCallOnHold ? "rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"} onClick={toggleHold}>
                             <Pause className="mr-2 h-4 w-4" />
                             {isCallOnHold ? "Resume" : "Hold"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className={callScreenMusicPlaying ? "rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"}
+                            onClick={toggleCallScreenMusic}
+                          >
+                            <Volume2 className="mr-2 h-4 w-4" />
+                            {callScreenMusicPlaying ? "Stop music" : "OCNE music"}
                           </Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
