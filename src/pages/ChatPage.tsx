@@ -828,7 +828,11 @@ export default function ChatPage() {
     }).catch(() => {
       callScreenMusicAudioRef.current = null;
       setCallScreenMusicPlaying(false);
-      setCallHealthMessage("Browser blocked the OCNE call music. Press the Music button in the call screen to start it.");
+      setCallHealthMessage(
+        manual
+          ? "Browser blocked the OCNE call music. Click Music once more in the call screen."
+          : "OCNE call music is ready. Click Music in the call screen to start it.",
+      );
     });
   }
 
@@ -1147,7 +1151,9 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (directCallActive) {
-      playCallScreenMusic(false);
+      if (!callScreenMusicAudioRef.current) {
+        setCallHealthMessage("OCNE call music is ready. Click Music in the call screen if it does not start automatically.");
+      }
       return;
     }
     if (callState === "idle" || callState === "incoming") {
@@ -1181,7 +1187,7 @@ export default function ChatPage() {
       const saved = JSON.parse(savedCall) as { peerId?: string; mode?: "voice" | "video"; savedAt?: number };
       if (saved.peerId && (saved.mode === "voice" || saved.mode === "video") && (!saved.savedAt || Date.now() - saved.savedAt < 120_000)) {
         setActionError("Restoring the interrupted direct call with a fresh peer connection...");
-        void startDirectCall(saved.mode, saved.peerId).catch((error) => {
+        void startDirectCall(saved.mode, saved.peerId, false).catch((error) => {
           setActionError(error instanceof Error ? error.message : "The previous direct call could not be restored.");
         });
         return;
@@ -1963,12 +1969,15 @@ export default function ChatPage() {
     await cleanupPromiseRef.current;
   }
 
-  async function startDirectCall(mode: "voice" | "video", recipientId = directRecipientId) {
+  async function startDirectCall(mode: "voice" | "video", recipientId = directRecipientId, startMusic = true) {
     const targetUserId = recipientId?.trim();
     if (!targetUserId) return;
     if (String(targetUserId) === String(user?.id)) {
       setActionError("You cannot call yourself.");
       return;
+    }
+    if (startMusic) {
+      playCallScreenMusic(true);
     }
     if (cleanupPromiseRef.current) {
       await cleanupPromiseRef.current;
@@ -1986,7 +1995,6 @@ export default function ChatPage() {
     setCallState("outgoing");
     setIsCallOnHold(false);
     lastRemoteHeartbeatRef.current = null;
-    playCallScreenMusic(true);
 
     try {
       const stream = await ensureLocalStream(mode);
@@ -2018,6 +2026,7 @@ export default function ChatPage() {
   async function acceptIncomingCall() {
     if (!incomingCall || !directRecipientId) return;
     try {
+      playCallScreenMusic(true);
       if (cleanupPromiseRef.current) {
         await cleanupPromiseRef.current;
       }
@@ -2035,7 +2044,6 @@ export default function ChatPage() {
       setCallState("connecting");
       setIsCallOnHold(false);
       lastRemoteHeartbeatRef.current = Date.now();
-      playCallScreenMusic(true);
 
       const stream = await ensureLocalStream(mediaMode);
       const pc = createPeerConnection(incomingCall.callId, directRecipientId);
