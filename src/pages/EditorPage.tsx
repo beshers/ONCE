@@ -95,7 +95,7 @@ function writeEditorState(projectId: number | undefined, state: { fileId?: numbe
 type FeatureCard = [string, string, LucideIcon];
 type ProviderCard = [string, LucideIcon];
 type SaveIntent = "manual" | "auto" | "language";
-type SaveStatus = "saved" | "saving" | "unsaved" | "error";
+type SaveStatus = "saved" | "saving" | "queued" | "unsaved" | "error";
 type CollaborationStatus = "solo" | "connecting" | "connected" | "disconnected";
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
 const AGENT_COMMAND_KEY = "ocne-agent-command";
@@ -146,6 +146,7 @@ export default function EditorPage() {
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const saveIntentRef = useRef<SaveIntent>("manual");
+  const queuedSaveIntentRef = useRef<SaveIntent | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -451,8 +452,24 @@ export default function EditorPage() {
 
   const saveActiveFile = useCallback(async (intent: SaveIntent = "manual") => {
     if (!activeFileId || !activeFile) return;
-    if (!isModified && intent === "auto") {
+    if (saveFile.isPending) {
+      queuedSaveIntentRef.current = intent;
+      setSaveStatus("queued");
+      setSaveMessage("Save queued. OCNE will sync the latest code next.");
+      writeStoredDraft(projectId, activeFileId, code);
+      return;
+    }
+    if (!isModified) {
       setSaveStatus("saved");
+      if (intent === "manual") {
+        setSaveMessage("Already saved.");
+      }
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      writeStoredDraft(projectId, activeFileId, code);
+      setSaveStatus("error");
+      setSaveMessage("Offline draft saved in this browser. OCNE will sync when the network returns.");
       return;
     }
     saveIntentRef.current = intent;
@@ -463,7 +480,7 @@ export default function EditorPage() {
       language: activeFile?.language || "plaintext",
       commitMessage: intent === "manual" ? commitMessage.trim() || undefined : "Save Live sync",
     });
-  }, [activeFile, activeFileId, code, commitMessage, isModified, saveFile]);
+  }, [activeFile, activeFileId, code, commitMessage, isModified, projectId, saveFile]);
 
   const handleSave = () => {
     if (!activeFile) {
@@ -477,13 +494,23 @@ export default function EditorPage() {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
       event.preventDefault();
-      if (!activeFileId || !isModified || saveFile.isPending) return;
+      if (!activeFileId) return;
       void saveActiveFile("manual").catch(() => undefined);
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeFileId, isModified, saveActiveFile, saveFile.isPending]);
+  }, [activeFileId, saveActiveFile]);
+
+  useEffect(() => {
+    if (saveFile.isPending || !queuedSaveIntentRef.current) return;
+    const intent = queuedSaveIntentRef.current;
+    queuedSaveIntentRef.current = null;
+    if (!activeFileId || !activeFile || !isModified) {
+      return;
+    }
+    void saveActiveFile(intent).catch(() => undefined);
+  }, [activeFile, activeFileId, isModified, saveActiveFile, saveFile.isPending]);
 
   useEffect(() => {
     const persistCurrentDraft = () => {
@@ -497,7 +524,7 @@ export default function EditorPage() {
     };
     const flushLiveSave = () => {
       persistCurrentDraft();
-      if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
+      if (!activeFileId || !activeFile || !isModified) return;
       void saveActiveFile("auto").catch(() => undefined);
     };
 
@@ -509,17 +536,38 @@ export default function EditorPage() {
       window.removeEventListener("pagehide", persistCurrentDraft);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeFile, activeFileId, code, isModified, projectId, saveActiveFile, saveFile.isPending]);
+  }, [activeFile, activeFileId, code, isModified, projectId, saveActiveFile]);
 
   useEffect(() => {
-    if (!activeFileId || !activeFile || !isModified || saveFile.isPending) return;
+    if (!activeFileId || !activeFile || !isModified) return;
 
     const timer = window.setTimeout(() => {
       void saveActiveFile("auto").catch(() => undefined);
-    }, 500);
+    }, 1500);
 
     return () => window.clearTimeout(timer);
-  }, [activeFileId, activeFile, isModified, project?.collaborationMode, saveActiveFile, saveFile.isPending]);
+  }, [activeFileId, activeFile, code, isModified, project?.collaborationMode, saveActiveFile]);
+
+  useEffect(() => {
+    if (!activeFileId || !isModified) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      writeStoredDraft(projectId, activeFileId, code);
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [activeFileId, code, isModified, projectId]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      if (!activeFileId || !activeFile || !isModified) return;
+      setSaveMessage("Back online. Syncing your latest draft...");
+      void saveActiveFile("auto").catch(() => undefined);
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [activeFile, activeFileId, isModified, saveActiveFile]);
 
   const handleRun = () => {
     setActiveTab("local-agent");
@@ -587,14 +635,15 @@ export default function EditorPage() {
 
   // Line numbers for the textarea
   const lines = code.split("\n");
-  const effectiveSaveStatus: SaveStatus = saveStatus === "saving"
-    ? "saving"
+  const effectiveSaveStatus: SaveStatus = saveStatus === "saving" || saveStatus === "queued"
+    ? saveStatus
     : isModified
       ? saveStatus === "error" ? "error" : "unsaved"
       : "saved";
   const saveStatusText: Record<SaveStatus, string> = {
     saved: lastSavedAt ? `Saved ${lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
     saving: "Saving...",
+    queued: "Save queued",
     unsaved: "Unsaved changes",
     error: "Save failed",
   };
@@ -943,11 +992,11 @@ export default function EditorPage() {
             variant="ghost"
             size="sm"
             onClick={handleSave}
-            disabled={!activeFile || saveFile.isPending}
+            disabled={!activeFile}
             className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
           >
             <span className="mr-1.5 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.85)] animate-pulse" />
-            {saveFile.isPending ? "Syncing" : "Save live"}
+            {saveFile.isPending ? "Queue save" : "Save live"}
           </Button>
           <Button
             variant="ghost"

@@ -244,14 +244,25 @@ export const projectRouter = createRouter({
         ),
       }));
       if (!canEdit) throw new Error("Edit access denied");
-      await db.insert(projectVersions).values({
-        projectId: file.projectId,
-        fileId: file.id,
-        userId: ctx.user.id,
-        content: input.content,
-        commitMessage: input.commitMessage || null,
-        versionNumber: sql`(SELECT COALESCE(MAX(versionNumber), 0) + 1 FROM project_versions WHERE fileId = ${file.id})`,
-      });
+      const contentChanged = (file.content || "") !== input.content;
+      const languageChanged = Boolean(input.language && input.language !== file.language);
+      const nameChanged = Boolean(input.name && input.name !== file.name);
+
+      if (!contentChanged && !languageChanged && !nameChanged) {
+        return { success: true, skipped: true };
+      }
+
+      if (contentChanged) {
+        await db.insert(projectVersions).values({
+          projectId: file.projectId,
+          fileId: file.id,
+          userId: ctx.user.id,
+          content: input.content,
+          commitMessage: input.commitMessage || null,
+          versionNumber: sql`(SELECT COALESCE(MAX(versionNumber), 0) + 1 FROM project_versions WHERE fileId = ${file.id})`,
+        });
+      }
+
       await db.update(projectFiles).set({
         content: input.content,
         ...(input.name ? { name: input.name } : {}),
