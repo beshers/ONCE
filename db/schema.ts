@@ -326,6 +326,8 @@ export const friends = mysqlTable(
     status: mysqlEnum("status", ["pending", "accepted", "blocked"])
       .default("pending")
       .notNull(),
+    isFavoriteByRequester: boolean("is_favorite_by_requester").default(false).notNull(),
+    isFavoriteByAddressee: boolean("is_favorite_by_addressee").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

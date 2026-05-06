@@ -11,6 +11,7 @@ import {
   Send,
   Share2,
   Sparkles,
+  Star,
 } from "lucide-react";
 import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,10 +46,11 @@ export default function SocialPage() {
   const [commentText, setCommentText] = useState("");
   const [activePost, setActivePost] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [feedMode, setFeedMode] = useState<"all" | "code" | "mine">("all");
+  const [feedMode, setFeedMode] = useState<"all" | "favorites" | "code" | "mine">("all");
   const utils = trpc.useUtils();
 
   const { data: feed = [], isLoading } = trpc.social.feed.useQuery();
+  const { data: favoriteFeed = [], isLoading: favoritesLoading } = trpc.social.favoriteFeed.useQuery();
   const { data: comments = [], isLoading: commentsLoading } = trpc.social.comments.useQuery(
     { postId: activePost || 0 },
     { enabled: !!activePost },
@@ -56,15 +58,17 @@ export default function SocialPage() {
 
   const filteredFeed = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return feed.filter((item) => {
+    const sourceFeed = feedMode === "favorites" ? favoriteFeed : feed;
+    return sourceFeed.filter((item) => {
       const matchesMode =
         feedMode === "all" ||
+        feedMode === "favorites" ||
         (feedMode === "code" && !!item.post.codeSnippet) ||
         (feedMode === "mine" && item.author?.id === user?.id);
       const searchable = `${item.post.content} ${item.post.language || ""} ${item.author?.name || ""} ${item.author?.username || ""}`.toLowerCase();
       return matchesMode && (!query || searchable.includes(query));
     });
-  }, [feed, feedMode, search, user?.id]);
+  }, [favoriteFeed, feed, feedMode, search, user?.id]);
 
   const createPost = trpc.social.createPost.useMutation({
     onSuccess: async () => {
@@ -200,7 +204,7 @@ export default function SocialPage() {
           </div>
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-500" />
-            {(["all", "code", "mine"] as const).map((mode) => (
+            {(["all", "favorites", "code", "mine"] as const).map((mode) => (
               <Button
                 key={mode}
                 variant="ghost"
@@ -208,24 +212,34 @@ export default function SocialPage() {
                 onClick={() => setFeedMode(mode)}
                 className={feedMode === mode ? "bg-cyan-500/10 text-cyan-300" : "text-slate-400 hover:text-slate-100"}
               >
-                {mode === "all" ? "All" : mode === "code" ? "Code" : "Mine"}
+                {mode === "all" ? "All" : mode === "favorites" ? "Favorites" : mode === "code" ? "Code" : "Mine"}
               </Button>
             ))}
           </div>
         </div>
 
         <div className="space-y-4">
-          {isLoading && (
+          {(isLoading || (feedMode === "favorites" && favoritesLoading)) && (
             <div className="rounded-lg border border-white/10 bg-[#10101a] p-8 text-center text-sm text-slate-500">
               Loading feed...
             </div>
           )}
 
-          {!isLoading && filteredFeed.length === 0 && (
+          {!isLoading && !(feedMode === "favorites" && favoritesLoading) && filteredFeed.length === 0 && (
             <div className="rounded-lg border border-white/10 bg-[#10101a] py-16 text-center text-slate-500">
-              <Globe className="mx-auto mb-3 h-10 w-10 opacity-30" />
-              <p className="text-lg font-medium text-slate-300">No posts found</p>
-              <p className="text-sm">Share something or clear the current filter.</p>
+              {feedMode === "favorites" ? (
+                <Star className="mx-auto mb-3 h-10 w-10 opacity-30" />
+              ) : (
+                <Globe className="mx-auto mb-3 h-10 w-10 opacity-30" />
+              )}
+              <p className="text-lg font-medium text-slate-300">
+                {feedMode === "favorites" ? "No favorite posts yet" : "No posts found"}
+              </p>
+              <p className="text-sm">
+                {feedMode === "favorites"
+                  ? "Mark friends as favorite on the Friends page to follow their posts here."
+                  : "Share something or clear the current filter."}
+              </p>
             </div>
           )}
 

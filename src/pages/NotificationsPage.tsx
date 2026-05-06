@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Bell, Check, Trash2, UserPlus, FolderOpen, MessageSquare,
-  Trophy, Code2, CheckCheck
+  Trophy, Code2, CheckCheck, Star
 } from "lucide-react";
 
 export default function NotificationsPage() {
@@ -34,6 +34,7 @@ export default function NotificationsPage() {
   });
 
   const getIcon = (type: string) => {
+    if (type === "system") return <Star className="w-4 h-4 text-amber-300" />;
     switch (type) {
       case "friend_request": return <UserPlus className="w-4 h-4 text-cyan-400" />;
       case "friend_accepted": return <UserPlus className="w-4 h-4 text-emerald-400" />;

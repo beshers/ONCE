@@ -202,6 +202,8 @@ const coreTableSql = [
     requester_id VARCHAR(255) NOT NULL,
     addressee_id VARCHAR(255) NOT NULL,
     status ENUM('pending', 'accepted', 'blocked') NOT NULL DEFAULT 'pending',
+    is_favorite_by_requester TINYINT(1) NOT NULL DEFAULT 0,
+    is_favorite_by_addressee TINYINT(1) NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY friends_requester_addressee_unique (requester_id, addressee_id)
@@ -320,6 +322,9 @@ async function ensureCoreTables(connection: mysql.Connection) {
   for (const statement of coreTableSql) {
     await connection.query(statement);
   }
+
+  await ensureTableColumn(connection, "friends", "is_favorite_by_requester", "TINYINT(1) NOT NULL DEFAULT 0");
+  await ensureTableColumn(connection, "friends", "is_favorite_by_addressee", "TINYINT(1) NOT NULL DEFAULT 0");
 
   for (const [column, definition] of projectColumns) {
     await ensureTableColumn(connection, "projects", column, definition);

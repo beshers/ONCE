@@ -11,8 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Check,
   Clock,
+  Bell,
   MessageSquare,
   Search,
+  Star,
   UserCheck,
   UserMinus,
   UserPlus,
@@ -63,8 +65,8 @@ export default function FriendsPage() {
   }, [friends]);
 
   const acceptedFriends = friends.filter((friend) => friend.status === "accepted");
+  const favoriteFriends = acceptedFriends.filter((friend) => friend.isFavorite);
   const pendingRequests = requests.filter((request) => request.request.status === "pending");
-  const outgoingPending = friends.filter((friend) => friend.status === "pending" && !relationByUserId.get(String(friend.user?.id))?.incoming);
 
   const sendRequest = trpc.friend.sendRequest.useMutation({
     onSuccess: async (result) => {
@@ -99,6 +101,14 @@ export default function FriendsPage() {
     onError: (error) => toast.error(error.message || "Could not update this friend connection."),
   });
 
+  const setFavorite = trpc.friend.setFavorite.useMutation({
+    onSuccess: async (_result, variables) => {
+      toast.success(variables.isFavorite ? "Added to favorite friends." : "Moved back to normal friends.");
+      await utils.friend.list.invalidate();
+    },
+    onError: (error) => toast.error(error.message || "Could not update favorite friend."),
+  });
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <section className="flex flex-col gap-4 rounded-lg border border-white/10 bg-[#10101a] p-5 md:flex-row md:items-end md:justify-between">
@@ -116,15 +126,55 @@ export default function FriendsPage() {
             <p className="text-xs text-slate-500">Friends</p>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-lg font-semibold text-white">{favoriteFriends.length}</p>
+            <p className="text-xs text-slate-500">Favorites</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
             <p className="text-lg font-semibold text-white">{pendingRequests.length}</p>
             <p className="text-xs text-slate-500">Requests</p>
           </div>
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-            <p className="text-lg font-semibold text-white">{outgoingPending.length}</p>
-            <p className="text-xs text-slate-500">Sent</p>
-          </div>
         </div>
       </section>
+
+      {favoriteFriends.length > 0 && (
+        <section className="rounded-lg border border-amber-400/20 bg-[#10101a] p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Star className="h-4 w-4 fill-amber-300 text-amber-300" />
+                Favorite friends
+              </p>
+              <p className="mt-1 text-xs text-slate-500">You will get notifications when these friends post public updates.</p>
+            </div>
+            <Badge className="w-fit bg-amber-400/10 text-amber-200 hover:bg-amber-400/10">
+              <Bell className="mr-1.5 h-3.5 w-3.5" />
+              Notifications on
+            </Badge>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {favoriteFriends.map((friend) => (
+              <div key={friend.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <UserAvatar user={friend.user} className="h-10 w-10" fallbackClassName="bg-gradient-to-br from-amber-400 to-cyan-500 text-white" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white">{friend.user?.name || friend.user?.username || "User"}</p>
+                    <p className="truncate text-xs text-slate-500">@{friend.user?.username || "developer"}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-amber-300 hover:bg-amber-400/10 hover:text-amber-200"
+                  onClick={() => setFavorite.mutate({ friendId: friend.id, isFavorite: false })}
+                  disabled={setFavorite.isPending}
+                >
+                  <Star className="h-4 w-4 fill-current" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <Card className="border-white/10 bg-[#10101a]">
         <CardContent className="p-4">
@@ -171,7 +221,12 @@ export default function FriendsPage() {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-white">{user.name || user.username}</p>
                         <p className="truncate text-xs text-slate-500">@{user.username}</p>
-                        <p className="mt-1 text-xs text-cyan-300">{relationLabel(relation?.status, relation?.incoming)}</p>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-cyan-300">
+                          {isAccepted && relationByUserId.get(String(user.id)) && friends.find((friend) => friend.id === relation?.id)?.isFavorite && (
+                            <Star className="h-3 w-3 fill-amber-300 text-amber-300" />
+                          )}
+                          {relationLabel(relation?.status, relation?.incoming)}
+                        </p>
                       </div>
                     </div>
                     {isAccepted ? (
@@ -204,9 +259,12 @@ export default function FriendsPage() {
       </Card>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid h-auto w-full grid-cols-2 border border-white/10 bg-[#10101a] p-1 sm:w-fit">
+        <TabsList className="grid h-auto w-full grid-cols-3 border border-white/10 bg-[#10101a] p-1 sm:w-fit">
           <TabsTrigger value="all" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-300">
             All Friends ({acceptedFriends.length})
+          </TabsTrigger>
+          <TabsTrigger value="favorites" className="data-[state=active]:bg-amber-500/10 data-[state=active]:text-amber-200">
+            Favorites ({favoriteFriends.length})
           </TabsTrigger>
           <TabsTrigger value="requests" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-300">
             Requests
@@ -245,6 +303,15 @@ export default function FriendsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      className={friend.isFavorite ? "h-8 w-8 text-amber-300 hover:bg-amber-400/10" : "h-8 w-8 text-slate-500 hover:text-amber-300"}
+                      onClick={() => setFavorite.mutate({ friendId: friend.id, isFavorite: !friend.isFavorite })}
+                      disabled={setFavorite.isPending}
+                    >
+                      <Star className={friend.isFavorite ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8 text-slate-500 hover:text-red-300"
                       onClick={() => removeFriend.mutate({ friendId: friend.id })}
                       disabled={removeFriend.isPending}
@@ -252,6 +319,40 @@ export default function FriendsPage() {
                       <UserMinus className="h-4 w-4" />
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="favorites" className="mt-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {favoriteFriends.length === 0 && (
+              <div className="col-span-full rounded-lg border border-white/10 bg-[#10101a] py-12 text-center text-slate-500">
+                <Star className="mx-auto mb-2 h-10 w-10 opacity-40" />
+                <p className="text-sm">No favorite friends yet. Use the star on a normal friend to receive their post notifications.</p>
+              </div>
+            )}
+            {favoriteFriends.map((friend) => (
+              <Card key={friend.id} className="border-amber-400/20 bg-[#10101a]">
+                <CardContent className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <UserAvatar user={friend.user} className="h-11 w-11" fallbackClassName="bg-gradient-to-br from-amber-400 to-cyan-500 text-white" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-white">{friend.user?.name || friend.user?.username || "User"}</p>
+                      <p className="truncate text-xs text-slate-500">@{friend.user?.username || "developer"}</p>
+                      <p className="mt-1 text-xs text-amber-200">Post notifications enabled</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-amber-300 hover:bg-amber-400/10"
+                    onClick={() => setFavorite.mutate({ friendId: friend.id, isFavorite: false })}
+                    disabled={setFavorite.isPending}
+                  >
+                    <Star className="h-4 w-4 fill-current" />
+                  </Button>
                 </CardContent>
               </Card>
             ))}

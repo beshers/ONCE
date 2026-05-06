@@ -24,6 +24,10 @@ export const friendRouter = createRouter({
     return rows.map((r) => ({
       ...r,
       user: friendUsers.find((u) => u.id === (r.requesterId === ctx.user.id ? r.addresseeId : r.requesterId)),
+      isFavorite:
+        r.requesterId === ctx.user.id
+          ? r.isFavoriteByRequester
+          : r.isFavoriteByAddressee,
     }));
   }),
 
@@ -133,6 +137,28 @@ export const friendRouter = createRouter({
       if (!friend) throw new Error("Not found");
       if (friend.requesterId !== ctx.user.id && friend.addresseeId !== ctx.user.id) throw new Error("Access denied");
       await db.delete(friends).where(eq(friends.id, input.friendId));
+      return { success: true };
+    }),
+
+  setFavorite: authedQuery
+    .input(z.object({ friendId: z.number(), isFavorite: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [friend] = await db.select().from(friends).where(eq(friends.id, input.friendId));
+      if (!friend) throw new Error("Not found");
+      if (friend.requesterId !== ctx.user.id && friend.addresseeId !== ctx.user.id) {
+        throw new Error("Access denied");
+      }
+      if (friend.status !== "accepted") {
+        throw new Error("Only accepted friends can be marked as favorite");
+      }
+
+      const update =
+        friend.requesterId === ctx.user.id
+          ? { isFavoriteByRequester: input.isFavorite, updatedAt: new Date() }
+          : { isFavoriteByAddressee: input.isFavorite, updatedAt: new Date() };
+
+      await db.update(friends).set(update).where(eq(friends.id, input.friendId));
       return { success: true };
     }),
 
