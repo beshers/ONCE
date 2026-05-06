@@ -560,6 +560,23 @@ export default function ChatPage() {
     : roomMediaMode === "idle"
       ? "No room call running"
       : `${roomMediaMode} session live`;
+  const directCallActive = Boolean(directRecipientId && ["outgoing", "connecting", "connected"].includes(callState));
+  const directCallVisualMode: "voice" | "video" | "screen" = isSharingScreen ? "screen" : callMode;
+  const directCallModeLabel = callModeLabel(directCallVisualMode);
+  const directCallStatusLabel =
+    callState === "outgoing"
+      ? "Calling..."
+      : callState === "connecting"
+        ? "Connecting..."
+        : callState === "connected"
+          ? "Live now"
+          : "Ready";
+  const directCallStatusClass =
+    callState === "connected"
+      ? "bg-emerald-500/15 text-emerald-300"
+      : callState === "outgoing" || callState === "connecting"
+        ? "bg-amber-500/15 text-amber-200"
+        : "bg-white/10 text-slate-200";
   const recentCallHistory = useMemo(() => {
     return (callHistory || []).map((entry) => {
       const call = entry.call;
@@ -3101,6 +3118,16 @@ export default function ChatPage() {
           from { transform: translate3d(0,0,0) rotate(-16deg); }
           to { transform: translate3d(-28px,18px,0) rotate(8deg); }
         }
+
+        @keyframes callPulseRing {
+          0%, 100% { transform: scale(0.96); opacity: 0.42; }
+          50% { transform: scale(1.08); opacity: 0.76; }
+        }
+
+        @keyframes callStageIn {
+          from { opacity: 0; transform: translateY(14px) scale(0.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
       `}</style>
       <div className="chat-atmosphere chat-atmosphere--grain" />
       <div className="chat-atmosphere chat-atmosphere--beam" />
@@ -4309,6 +4336,197 @@ export default function ChatPage() {
                     )}
                   </div>
 
+                  {directCallActive && (
+                    <div className="mt-4 overflow-hidden rounded-3xl border border-cyan-400/20 bg-[#050914] shadow-2xl shadow-cyan-950/20" style={{ animation: "callStageIn 360ms ease-out both" }}>
+                      <div className="flex flex-col gap-3 border-b border-white/10 bg-white/[0.03] px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="relative">
+                            <div className="absolute inset-0 rounded-full bg-cyan-400/25 blur-xl" />
+                            <UserAvatar
+                              user={currentDirectUser}
+                              fallback={roomName}
+                              className="relative h-12 w-12 border border-cyan-300/30"
+                              fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-sm font-semibold text-white"
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge className={`border-0 ${directCallStatusClass}`}>{directCallStatusLabel}</Badge>
+                              <Badge variant="outline" className="border-white/10 text-slate-300">
+                                {directCallVisualMode === "screen" ? (
+                                  <ScreenShare className="mr-1.5 h-3.5 w-3.5" />
+                                ) : directCallVisualMode === "video" ? (
+                                  <Video className="mr-1.5 h-3.5 w-3.5" />
+                                ) : (
+                                  <Phone className="mr-1.5 h-3.5 w-3.5" />
+                                )}
+                                {directCallModeLabel}
+                              </Badge>
+                            </div>
+                            <div className="mt-1 truncate text-lg font-semibold text-white">{roomName}</div>
+                            <div className="text-xs text-slate-500">{callHealthMessage}</div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[330px]">
+                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Quality</div>
+                            <div className={`mt-1 text-sm font-semibold ${
+                              callStats.quality === "good"
+                                ? "text-emerald-300"
+                                : callStats.quality === "fair"
+                                  ? "text-amber-200"
+                                  : callStats.quality === "poor"
+                                    ? "text-red-200"
+                                    : "text-white"
+                            }`}>
+                              {callStats.quality}
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">ICE</div>
+                            <div className="mt-1 truncate text-sm font-semibold text-white">{iceConnectionState}</div>
+                          </div>
+                          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">RTT</div>
+                            <div className="mt-1 text-sm font-semibold text-white">{callStats.rttMs ?? "--"} ms</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="relative min-h-[380px] bg-black md:min-h-[520px]">
+                        <video
+                          ref={remoteVideoRef}
+                          autoPlay
+                          playsInline
+                          className={`absolute inset-0 h-full w-full object-cover ${directCallVisualMode === "voice" ? "opacity-0" : "opacity-100"}`}
+                        />
+                        {directCallVisualMode === "voice" && (
+                          <div className={`absolute inset-0 flex flex-col items-center justify-center ${callBackgroundClass}`}>
+                            <div className="relative flex h-44 w-44 items-center justify-center">
+                              <div className="absolute inset-0 rounded-full border border-cyan-300/20 bg-cyan-300/10" style={{ animation: "callPulseRing 1800ms ease-in-out infinite" }} />
+                              <div className="absolute inset-5 rounded-full border border-violet-300/20 bg-violet-300/10" style={{ animation: "callPulseRing 1800ms ease-in-out 260ms infinite" }} />
+                              <UserAvatar
+                                user={currentDirectUser}
+                                fallback={roomName}
+                                className="relative h-28 w-28 border-2 border-white/20 shadow-2xl shadow-black/40"
+                                fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-3xl font-semibold text-white"
+                              />
+                            </div>
+                            <div className="mt-6 text-2xl font-semibold text-white">{roomName}</div>
+                            <div className="mt-2 text-sm text-slate-400">
+                              {remoteMediaState.held ? "Call on hold" : remoteMediaState.muted ? "Remote microphone muted" : "Voice call active"}
+                            </div>
+                          </div>
+                        )}
+                        {directCallVisualMode !== "voice" && !hasRemoteStream && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-center">
+                            <UserAvatar
+                              user={currentDirectUser}
+                              fallback={roomName}
+                              className="h-20 w-20 border border-white/15"
+                              fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-2xl font-semibold text-white"
+                            />
+                            <div className="mt-4 text-sm font-medium text-white">Waiting for remote {directCallVisualMode === "screen" ? "screen" : "video"}</div>
+                            <div className="mt-1 text-xs text-slate-500">Audio can connect before video starts.</div>
+                          </div>
+                        )}
+                        {(remoteMediaState.held || remoteMediaState.muted || remoteMediaState.cameraOff) && (
+                          <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+                            {remoteMediaState.held && <Badge className="border-0 bg-amber-500/20 text-amber-100">On hold</Badge>}
+                            {remoteMediaState.muted && <Badge className="border-0 bg-white/15 text-white">Remote muted</Badge>}
+                            {remoteMediaState.cameraOff && directCallVisualMode !== "voice" && <Badge className="border-0 bg-white/15 text-white">Camera off</Badge>}
+                          </div>
+                        )}
+                        {remoteVideoNeedsGesture && (
+                          <button
+                            type="button"
+                            onClick={() => resumeVideoPlayback(remoteVideoRef.current)}
+                            className="absolute inset-0 z-10 flex items-center justify-center bg-black/55 text-sm font-medium text-cyan-100"
+                          >
+                            Click to resume remote media
+                          </button>
+                        )}
+
+                        <div className="absolute bottom-4 right-4 w-36 overflow-hidden rounded-2xl border border-white/15 bg-[#0f1624] shadow-2xl shadow-black/40 sm:w-48">
+                          <div className="border-b border-white/10 px-3 py-1.5 text-[11px] font-medium text-slate-300">You</div>
+                          <div className={`relative aspect-video ${callBackgroundClass}`}>
+                            <video
+                              ref={localVideoRef}
+                              autoPlay
+                              muted
+                              playsInline
+                              className={`${localVideoClassName} ${callMode === "voice" && !isSharingScreen ? "opacity-0" : "opacity-100"}`}
+                            />
+                            {(callMode === "voice" && !isSharingScreen) || !hasLocalStream ? (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <UserAvatar
+                                  user={user}
+                                  fallback={user?.name || user?.username}
+                                  className="h-12 w-12"
+                                  fallbackClassName="bg-gradient-to-br from-emerald-500 to-cyan-500 text-sm font-semibold text-white"
+                                />
+                              </div>
+                            ) : null}
+                            {localVideoNeedsGesture && (
+                              <button
+                                type="button"
+                                onClick={() => resumeVideoPlayback(localVideoRef.current)}
+                                className="absolute inset-0 flex items-center justify-center bg-black/55 px-3 text-center text-[11px] font-medium text-cyan-100"
+                              >
+                                Resume preview
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-3 border-t border-white/10 bg-[#070b12] p-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="ghost" className={isMuted ? "rounded-full border border-red-500/30 bg-red-500/10 text-red-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"} onClick={toggleMute}>
+                            <Mic className="mr-2 h-4 w-4" />
+                            {isMuted ? "Unmute" : "Mute"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className={isCameraOff ? "rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"}
+                            onClick={toggleCamera}
+                            disabled={callMode === "voice"}
+                          >
+                            <Video className="mr-2 h-4 w-4" />
+                            {isCameraOff ? "Camera on" : "Camera off"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className={isSharingScreen ? "rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"}
+                            onClick={() => void toggleScreenShare()}
+                            disabled={callMode === "voice"}
+                          >
+                            <ScreenShare className="mr-2 h-4 w-4" />
+                            {isSharingScreen ? "Stop share" : "Share screen"}
+                          </Button>
+                          <Button variant="ghost" className={isCallOnHold ? "rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-100" : "rounded-full border border-white/10 text-slate-200 hover:bg-white/10"} onClick={toggleHold}>
+                            <Pause className="mr-2 h-4 w-4" />
+                            {isCallOnHold ? "Resume" : "Hold"}
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void handleTogglePip()}>
+                            <PictureInPicture2 className="mr-2 h-4 w-4" />
+                            PiP
+                          </Button>
+                          <Button variant="ghost" className="rounded-full border border-white/10 text-slate-200 hover:bg-white/10" onClick={() => void handleReconnectCall()}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Reconnect
+                          </Button>
+                          <Button className="rounded-full bg-red-500 text-white hover:bg-red-400" onClick={() => void cleanupActiveCall(true)}>
+                            <PhoneOff className="mr-2 h-4 w-4" />
+                            Hang up
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mt-4 rounded-2xl border border-white/10 bg-[#080b12] p-3">
                     <div className="flex items-center justify-between">
                       <div>
@@ -4403,66 +4621,68 @@ export default function ChatPage() {
                       </div>
                     )}
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
-                        <div className="border-b border-white/5 px-3 py-2 text-xs font-medium text-slate-300">
-                          You
-                        </div>
-                        <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
-                          <video ref={localVideoRef} autoPlay muted playsInline className={localVideoClassName} />
-                          {!hasLocalStream && (
-                            <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
-                              Local media preview
-                            </div>
-                          )}
-                          {localVideoNeedsGesture && (
-                            <button
-                              type="button"
-                              onClick={() => resumeVideoPlayback(localVideoRef.current)}
-                              className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
-                            >
-                              Click to resume preview
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
-                        <div className="border-b border-white/5 px-3 py-2 text-xs font-medium text-slate-300">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span>{roomName}</span>
-                            <span className="text-[10px] text-slate-500">
-                              {remoteMediaState.held ? "On hold" : `${remoteMediaState.muted ? "Muted" : "Mic on"} / ${remoteMediaState.cameraOff ? "Camera off" : "Camera on"}`}
-                            </span>
+                    {!directCallActive && (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
+                          <div className="border-b border-white/5 px-3 py-2 text-xs font-medium text-slate-300">
+                            You
+                          </div>
+                          <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
+                            <video ref={localVideoRef} autoPlay muted playsInline className={localVideoClassName} />
+                            {!hasLocalStream && (
+                              <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
+                                Local media preview
+                              </div>
+                            )}
+                            {localVideoNeedsGesture && (
+                              <button
+                                type="button"
+                                onClick={() => resumeVideoPlayback(localVideoRef.current)}
+                                className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
+                              >
+                                Click to resume preview
+                              </button>
+                            )}
                           </div>
                         </div>
-                        <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
-                          <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-                          {(remoteMediaState.held || remoteMediaState.muted || remoteMediaState.cameraOff) && hasRemoteStream && (
-                            <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-                              {remoteMediaState.held && <Badge className="border-0 bg-amber-500/20 text-amber-100">On hold</Badge>}
-                              {remoteMediaState.muted && <Badge className="border-0 bg-white/15 text-white">Muted</Badge>}
-                              {remoteMediaState.cameraOff && <Badge className="border-0 bg-white/15 text-white">Camera off</Badge>}
+                        <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#0f1624]">
+                          <div className="border-b border-white/5 px-3 py-2 text-xs font-medium text-slate-300">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span>{roomName}</span>
+                              <span className="text-[10px] text-slate-500">
+                                {remoteMediaState.held ? "On hold" : `${remoteMediaState.muted ? "Muted" : "Mic on"} / ${remoteMediaState.cameraOff ? "Camera off" : "Camera on"}`}
+                              </span>
                             </div>
-                          )}
-                          {!hasRemoteStream && (
-                            <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
-                              Waiting for remote media
-                            </div>
-                          )}
-                          {remoteVideoNeedsGesture && (
-                            <button
-                              type="button"
-                              onClick={() => resumeVideoPlayback(remoteVideoRef.current)}
-                              className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
-                            >
-                              Click to resume remote video
-                            </button>
-                          )}
+                          </div>
+                          <div className={`relative flex aspect-video items-center justify-center ${callBackgroundClass}`}>
+                            <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+                            {(remoteMediaState.held || remoteMediaState.muted || remoteMediaState.cameraOff) && hasRemoteStream && (
+                              <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                                {remoteMediaState.held && <Badge className="border-0 bg-amber-500/20 text-amber-100">On hold</Badge>}
+                                {remoteMediaState.muted && <Badge className="border-0 bg-white/15 text-white">Muted</Badge>}
+                                {remoteMediaState.cameraOff && <Badge className="border-0 bg-white/15 text-white">Camera off</Badge>}
+                              </div>
+                            )}
+                            {!hasRemoteStream && (
+                              <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
+                                Waiting for remote media
+                              </div>
+                            )}
+                            {remoteVideoNeedsGesture && (
+                              <button
+                                type="button"
+                                onClick={() => resumeVideoPlayback(remoteVideoRef.current)}
+                                className="absolute inset-0 flex items-center justify-center bg-black/55 text-xs font-medium text-cyan-100"
+                              >
+                                Click to resume remote video
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    )}
 
-                    {(callState === "connected" || callState === "connecting") && (
+                    {!directCallActive && (callState === "connected" || callState === "connecting") && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         <Button variant="ghost" className="border border-white/10 text-slate-200" onClick={toggleMute}>
                           <Mic className="mr-2 h-4 w-4" />
