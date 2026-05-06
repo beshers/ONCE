@@ -89,7 +89,7 @@ if (env.isProduction) {
 
   const port = parseInt(process.env.PORT || "3000");
   const server = serve({ fetch: app.fetch, port }, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+    console.log(`Server running internally on port ${port}. Public URL: https://ocne.onrender.com/`);
   });
   if (process.env.ENABLE_WS !== "false") {
     startWSServer(server as unknown as Server);
