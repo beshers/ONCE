@@ -23,9 +23,9 @@ const MAC_APP_X64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Intel.zip";
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
 const WINDOWS_APP_SHA256 =
-  "7186E26FFC64426EB4931B6FE8B89159D685DCD3DDD6896C6B3BF0A78E9A16EF";
+  "163B8DE55B048A7279B32CAA6183F70F10BFD1073160BED7BA956C58006B0383";
 const WINDOWS_APP_LITE_SHA256 =
-  "1571B9F82BB9A041520B5C93A66DE5F505F7EA9037035DD4670F5709CA892F27";
+  "FFC4F8A0EA02842B13B673B6EB2D7C035A7D8297C3C21A876E85CA0F3B777239";
 const MAC_APP_ARM64_SHA256 =
   "702EEFC210984C92F4D02B6F4F71E348B62EC272B76B89C5EC0641CFC7E1D98C";
 const MAC_APP_X64_SHA256 =
@@ -34,7 +34,7 @@ const MAC_APP_X64_SHA256 =
 const downloads = [
   {
     title: "OCNE Desktop App for Windows Lite",
-    description: "Smaller Windows desktop app. Best choice if antivirus blocks the standalone ZIP. Requires Microsoft .NET 10 Desktop Runtime.",
+    description: "Smaller Windows desktop app. Best choice if antivirus blocks the standalone ZIP. Requires Microsoft .NET 8 Desktop Runtime.",
     href: WINDOWS_APP_LITE_DOWNLOAD,
     fileType: "ZIP",
     meta: "Windows app, .NET required",
@@ -44,7 +44,7 @@ const downloads = [
   },
   {
     title: "OCNE Desktop App for Windows Standalone",
-    description: "Self-contained Avalonia/C# desktop app that opens OCNE without installing .NET. Larger unsigned ZIPs may trigger antivirus warnings.",
+    description: "Self-contained Avalonia/C# desktop app that opens OCNE without installing .NET. Extract the ZIP first, then run Start-OCNE-Desktop-Windows.cmd.",
     href: WINDOWS_APP_DOWNLOAD,
     fileType: "ZIP",
     meta: "Windows app, no .NET install",
@@ -132,7 +132,7 @@ export default function DownloadsPage() {
               <h1 className="mt-2 text-2xl font-semibold text-white">Files needed to use OCNE</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
                 Install the desktop agent for local terminal features, then keep the setup and troubleshooting files nearby for new devices.
-                If Windows antivirus blocks the standalone app, use the Windows Lite ZIP and install the Microsoft .NET Desktop Runtime first.
+                For Windows desktop app ZIPs, extract the whole folder first and run Start-OCNE-Desktop-Windows.cmd. If antivirus blocks the standalone app, use the Windows Lite ZIP and install the Microsoft .NET 8 Desktop Runtime first.
               </p>
             </div>
             <Badge className="border-0 bg-[#00a884]/15 px-3 py-1.5 text-[#7ee5c3]">

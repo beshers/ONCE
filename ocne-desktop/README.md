@@ -24,9 +24,9 @@ public/downloads/OCNE-Desktop-App-Windows.zip
 public/downloads/OCNE-Desktop-App-Windows-Lite.zip
 ```
 
-The standalone Windows build is self-contained. Users can extract the ZIP and run `OCNE.Desktop.exe` without installing the .NET runtime separately.
+The standalone Windows build is self-contained. Users can extract the ZIP and run `Start-OCNE-Desktop-Windows.cmd` without installing the .NET runtime separately. Do not run `OCNE.Desktop.exe` from inside the ZIP preview; extract the whole folder first so Windows can find all DLL files.
 
-The Lite Windows build is framework-dependent. It is smaller and is the better choice when antivirus software blocks the unsigned standalone app, but users need the Microsoft .NET 10 Desktop Runtime installed.
+The Lite Windows build is framework-dependent. It is smaller and is the better choice when antivirus software blocks the unsigned standalone app, but users need the Microsoft .NET 8 Desktop Runtime installed.
 
 ## Publish macOS Zips
 

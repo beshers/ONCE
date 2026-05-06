@@ -4,17 +4,22 @@ This ZIP contains the Avalonia/C# desktop app for OCNE.
 
 How to use on Windows:
 1. If antivirus blocks the standalone app, download OCNE-Desktop-App-Windows-Lite.zip.
-2. Install the Microsoft .NET 10 Desktop Runtime if you use the Lite ZIP.
+2. Install the Microsoft .NET 8 Desktop Runtime if you use the Lite ZIP.
 3. Extract the ZIP folder.
-4. Run OCNE.Desktop.exe.
+4. Run Start-OCNE-Desktop-Windows.cmd.
 5. Sign in to OCNE and use the website inside the desktop program.
 
 Windows package choices:
-- OCNE-Desktop-App-Windows-Lite.zip: smaller, recommended when antivirus blocks the app, requires .NET 10 Desktop Runtime.
+- OCNE-Desktop-App-Windows-Lite.zip: smaller, recommended when antivirus blocks the app, requires .NET 8 Desktop Runtime.
 - OCNE-Desktop-App-Windows.zip: standalone, no .NET install, larger unsigned package.
 
+Important:
+Do not run OCNE.Desktop.exe directly from inside the ZIP preview.
+Right-click the ZIP, choose Extract All, open the extracted folder, then run Start-OCNE-Desktop-Windows.cmd.
+Windows must be able to see all DLL files in the extracted folder.
+
 If Windows blocks the app:
-1. Right-click OCNE.Desktop.exe.
+1. Right-click Start-OCNE-Desktop-Windows.cmd or OCNE.Desktop.exe.
 2. Open Properties.
 3. Check Unblock if Windows shows it.
 4. Click Apply, then run the app again.
