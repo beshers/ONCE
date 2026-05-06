@@ -173,6 +173,7 @@ const CALL_SIGNAL_ACTIONS = new Set([
 
 const turnServerUrl = String(import.meta.env.VITE_TURN_URL || "");
 const activeCallSessionKey = "ocne-active-direct-call";
+const incomingCallPollMs = 1500;
 
 function getCallIceServers(): RTCIceServer[] {
   const servers: RTCIceServer[] = [
@@ -356,7 +357,8 @@ export default function ChatPage() {
     { since: 0 },
     {
       enabled: Boolean(user?.id),
-      refetchInterval: callState === "idle" || callState === "outgoing" ? (enableWebSockets ? 10000 : 3000) : false,
+      refetchInterval: callState === "idle" || callState === "outgoing" ? incomingCallPollMs : false,
+      refetchIntervalInBackground: true,
     },
   );
   const { data: callHistory } = trpc.chat.callHistory.useQuery(
@@ -464,6 +466,7 @@ export default function ChatPage() {
       enabled: enableWebSockets && Boolean(user?.id),
       onData: () => {
         void utils.chat.messages.invalidate();
+        void utils.chat.incomingCallOffers.invalidate();
         void utils.chat.directThreads.invalidate();
         void utils.chat.callHistory.invalidate();
         void utils.chat.unreadCount.invalidate();
@@ -1086,6 +1089,7 @@ export default function ChatPage() {
   function canReceiveCallFrom(senderId: string) {
     if (callPermission === "everyone") return true;
     if (callPermission === "nobody") return false;
+    if (!directThreads) return true;
     return Boolean(
       directThreads?.some(
         (thread) => String(thread.user?.id) === String(senderId) && Boolean(thread.isFriend),
@@ -1457,6 +1461,15 @@ export default function ChatPage() {
   // handleIncomingOffer uses live refs/timers and should not restart this polling bridge every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, directThreads, incomingCallOffers, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id || (callState !== "idle" && callState !== "outgoing")) return;
+    const timer = window.setInterval(() => {
+      void utils.chat.incomingCallOffers.invalidate();
+      void utils.chat.directThreads.invalidate();
+    }, incomingCallPollMs);
+    return () => window.clearInterval(timer);
+  }, [callState, user?.id, utils.chat.directThreads, utils.chat.incomingCallOffers]);
 
   useEffect(() => {
     setMessageText("");
