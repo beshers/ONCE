@@ -121,7 +121,7 @@ type EventMeta = {
 
 type IncomingCall = {
   callId: string;
-  mode: "voice" | "video";
+  mode: "voice" | "video" | "screen";
   fromUserId: string;
   offer: RTCSessionDescriptionInit;
 };
@@ -200,6 +200,19 @@ function getCallIceServers(): RTCIceServer[] {
 
 function isCallSignal(meta: EventMeta | null) {
   return meta?.kind === "call" && Boolean(meta.action && CALL_SIGNAL_ACTIONS.has(meta.action));
+}
+
+function normalizeIncomingCallMode(mode?: EventMeta["mode"]) {
+  return mode === "video" || mode === "screen" ? mode : "voice";
+}
+
+function mediaModeForCall(mode: "voice" | "video" | "screen") {
+  return mode === "voice" ? "voice" : "video";
+}
+
+function callModeLabel(mode: "voice" | "video" | "screen") {
+  if (mode === "screen") return "Screen share";
+  return mode === "video" ? "Video" : "Voice";
 }
 
 function makeGuestLink() {
@@ -769,7 +782,7 @@ export default function ChatPage() {
     }
   }
 
-  function playRingtone(mode: "voice" | "video") {
+  function playRingtone(mode: "voice" | "video" | "screen") {
     if (typeof window === "undefined" || ringtoneTimerRef.current) return;
     if (profileRingtone.url) {
       const audio = new Audio(profileRingtone.url);
@@ -792,7 +805,7 @@ export default function ChatPage() {
     if (context.state === "suspended" && !callSoundsReady) {
       setCallHealthMessage("Browser audio is waiting for a user click. Use Enable call alerts for reliable ringtone playback.");
     }
-    const frequencies = mode === "video" ? [660, 880] : [440, 660];
+    const frequencies = mode === "screen" ? [520, 780] : mode === "video" ? [660, 880] : [440, 660];
     let index = 0;
 
     const ring = () => {
@@ -838,11 +851,11 @@ export default function ChatPage() {
     setCallHealthMessage("Call alerts checked. Keep this page open for browser popups, ringtone, and direct WebRTC signaling.");
   }
 
-  function showIncomingCallNotification(mode: "voice" | "video", senderId: string) {
+  function showIncomingCallNotification(mode: "voice" | "video" | "screen", senderId: string) {
     if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
     const caller = directThreads?.find((thread) => String(thread.user?.id) === senderId)?.user;
     const name = caller?.name || caller?.username || "Someone";
-    const note = new Notification(`Incoming ${mode} call`, {
+    const note = new Notification(`Incoming ${callModeLabel(mode).toLowerCase()} call`, {
       body: `${name} is calling you in OCNE Chat.`,
       tag: `ocne-call-${senderId}`,
       requireInteraction: true,
@@ -869,6 +882,8 @@ export default function ChatPage() {
 
   async function handleIncomingOffer(senderId: string, meta: EventMeta) {
     if (!meta.callId || !meta.signalData || !meta.mode) return;
+    const mode = normalizeIncomingCallMode(meta.mode);
+    const mediaMode = mediaModeForCall(mode);
     if (!canReceiveCallFrom(senderId)) {
       await sendMessage.mutateAsync({
         content: "Call blocked by receiver settings",
@@ -879,7 +894,7 @@ export default function ChatPage() {
           title: "Call blocked",
           action: "reject",
           callId: meta.callId,
-          mode: meta.mode === "video" ? "video" : "voice",
+          mode,
           targetUserId: senderId,
           note: "The receiver is not accepting calls from this sender.",
         } satisfies EventMeta),
@@ -898,7 +913,7 @@ export default function ChatPage() {
             title: "Call declined",
             action: "reject",
             callId: meta.callId,
-            mode: meta.mode === "video" ? "video" : "voice",
+            mode,
             targetUserId: senderId,
             note: "Another call setup is already in progress.",
           } satisfies EventMeta),
@@ -908,7 +923,6 @@ export default function ChatPage() {
       await cleanupActiveCall(false);
     }
 
-    const mode = meta.mode === "video" ? "video" : "voice";
     if (missedCallTimerRef.current) {
       window.clearTimeout(missedCallTimerRef.current);
     }
@@ -922,10 +936,10 @@ export default function ChatPage() {
       fromUserId: senderId,
       offer: meta.signalData as RTCSessionDescriptionInit,
     });
-    setCallMode(mode);
-    callModeRef.current = mode;
+    setCallMode(mediaMode);
+    callModeRef.current = mediaMode;
     setCallState("incoming");
-    setActionError(`${mode === "video" ? "Video" : "Voice"} call incoming.`);
+    setActionError(`${callModeLabel(mode)} call incoming.`);
     playRingtone(mode);
     showIncomingCallNotification(mode, senderId);
     missedCallTimerRef.current = window.setTimeout(() => {
@@ -1796,13 +1810,14 @@ export default function ChatPage() {
       }
       setActionError(null);
       activeCallIdRef.current = incomingCall.callId;
-      setCallMode(incomingCall.mode);
-      callModeRef.current = incomingCall.mode;
+      const mediaMode = mediaModeForCall(incomingCall.mode);
+      setCallMode(mediaMode);
+      callModeRef.current = mediaMode;
       setCallState("connecting");
       setIsCallOnHold(false);
       lastRemoteHeartbeatRef.current = Date.now();
 
-      const stream = await ensureLocalStream(incomingCall.mode);
+      const stream = await ensureLocalStream(mediaMode);
       const pc = createPeerConnection(incomingCall.callId);
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
@@ -3107,8 +3122,14 @@ export default function ChatPage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className="border-0 bg-[var(--chat-lime)] px-2.5 py-1 text-[var(--chat-panel)]">
-                  {incomingCall.mode === "video" ? <Video className="mr-1.5 h-3.5 w-3.5" /> : <Phone className="mr-1.5 h-3.5 w-3.5" />}
-                  Incoming {incomingCall.mode}
+                  {incomingCall.mode === "screen" ? (
+                    <ScreenShare className="mr-1.5 h-3.5 w-3.5" />
+                  ) : incomingCall.mode === "video" ? (
+                    <Video className="mr-1.5 h-3.5 w-3.5" />
+                  ) : (
+                    <Phone className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  Incoming {callModeLabel(incomingCall.mode).toLowerCase()}
                 </Badge>
                 <Badge variant="outline" className="border-white/10 text-slate-300">
                   {profileRingtone.name}
