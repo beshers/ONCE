@@ -18,7 +18,12 @@ import { trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfileRingtone } from "@/hooks/useProfileRingtone";
 import { getStoredProfileAvatar, getUserInitial, setStoredProfileAvatar } from "@/lib/profileAvatar";
-import { setStoredProfileRingtone } from "@/lib/profileRingtone";
+import {
+  BUILT_IN_PROFILE_RINGTONES,
+  setStoredBuiltInProfileRingtone,
+  setStoredProfileRingtone,
+} from "@/lib/profileRingtone";
+import type { BuiltInProfileRingtoneId } from "@/lib/profileRingtone";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -183,6 +188,14 @@ export default function ProfilePage() {
     setMessage("Custom ringtone removed.");
   };
 
+  const handleBuiltInRingtoneSelect = (id: BuiltInProfileRingtoneId) => {
+    if (!user) return;
+    ringtonePreviewRef.current?.pause();
+    const saved = setStoredBuiltInProfileRingtone(user.id, id);
+    const selected = BUILT_IN_PROFILE_RINGTONES.find((item) => item.id === id);
+    setMessage(saved ? `${selected?.name || "OCNE ringtone"} selected for incoming calls.` : "The browser could not save this ringtone.");
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
@@ -335,6 +348,26 @@ export default function ProfilePage() {
                     )}
                   </div>
                 </div>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {BUILT_IN_PROFILE_RINGTONES.map((item) => {
+                  const selected = ringtone.selectedBuiltInId === item.id && !ringtone.isCustom;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleBuiltInRingtoneSelect(item.id)}
+                      className={`rounded-lg border p-3 text-left transition ${
+                        selected
+                          ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-100"
+                          : "border-white/10 bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <span className="block text-sm font-medium">{item.name}</span>
+                      <span className="mt-1 block text-xs text-slate-500">Built-in OCNE ringtone</span>
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

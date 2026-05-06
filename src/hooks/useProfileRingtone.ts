@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
 import {
+  BUILT_IN_PROFILE_RINGTONES,
   DEFAULT_PROFILE_RINGTONE_NAME,
   DEFAULT_PROFILE_RINGTONE_URL,
+  getStoredBuiltInProfileRingtoneId,
   getStoredProfileRingtone,
   getStoredProfileRingtoneName,
   PROFILE_RINGTONE_UPDATED_EVENT,
@@ -37,9 +39,16 @@ export function useProfileRingtone(userId?: string | null) {
     () => null,
   );
 
+  const builtInId = useSyncExternalStore(
+    subscribe,
+    () => getStoredBuiltInProfileRingtoneId(userId),
+    () => null,
+  );
+
   return {
     url: customUrl || DEFAULT_PROFILE_RINGTONE_URL,
     name: customName || DEFAULT_PROFILE_RINGTONE_NAME,
-    isCustom: Boolean(customUrl),
+    isCustom: Boolean(customUrl && !builtInId),
+    selectedBuiltInId: builtInId || (!customUrl ? BUILT_IN_PROFILE_RINGTONES[0].id : null),
   };
 }
