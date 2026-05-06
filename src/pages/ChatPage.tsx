@@ -778,7 +778,7 @@ export default function ChatPage() {
       ringtoneAudioRef.current = audio;
       void audio.play().catch(() => {
         ringtoneAudioRef.current = null;
-        setCallHealthMessage("Browser blocked your custom ringtone until the page receives a user click.");
+        setCallHealthMessage("Browser blocked the incoming-call ringtone until the page receives a user click.");
       });
       return;
     }
@@ -3111,7 +3111,7 @@ export default function ChatPage() {
                   Incoming {incomingCall.mode}
                 </Badge>
                 <Badge variant="outline" className="border-white/10 text-slate-300">
-                  {profileRingtone.name || "Default ringtone"}
+                  {profileRingtone.name}
                 </Badge>
               </div>
               <div className="mt-2 truncate text-xl font-black tracking-[-0.03em] text-[#fbffe8]">

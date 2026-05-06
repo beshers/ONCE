@@ -314,21 +314,21 @@ export default function ProfilePage() {
               <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-white">{ringtone.name || "Default OCNE ringtone"}</p>
-                    <p className="mt-1 text-xs text-slate-500">Used when someone calls you in OCNE Chat on this device.</p>
+                    <p className="text-sm font-medium text-white">{ringtone.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {ringtone.isCustom ? "Your custom incoming-call sound on this device." : "Default OCNE incoming-call music."}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {ringtone.url && (
-                      <Button variant="ghost" onClick={() => void handlePreviewRingtone()} className="border border-white/10 text-slate-200 hover:bg-white/10">
-                        <Volume2 className="mr-2 h-4 w-4" />
-                        Preview
-                      </Button>
-                    )}
+                    <Button variant="ghost" onClick={() => void handlePreviewRingtone()} className="border border-white/10 text-slate-200 hover:bg-white/10">
+                      <Volume2 className="mr-2 h-4 w-4" />
+                      Preview
+                    </Button>
                     <Button onClick={() => ringtoneInputRef.current?.click()} className="bg-cyan-500 text-slate-950 hover:bg-cyan-400">
                       <Music className="mr-2 h-4 w-4" />
                       Choose Sound
                     </Button>
-                    {ringtone.url && (
+                    {ringtone.isCustom && (
                       <Button variant="outline" onClick={handleRemoveRingtone} className="border-white/10 bg-white/5 text-slate-200 hover:bg-white/10">
                         Default
                       </Button>

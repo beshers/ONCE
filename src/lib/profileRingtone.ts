@@ -1,4 +1,8 @@
+import defaultRingtoneUrl from "@/The_Monday_Ledger.mp3";
+
 export const PROFILE_RINGTONE_UPDATED_EVENT = "ocne-profile-ringtone-updated";
+export const DEFAULT_PROFILE_RINGTONE_NAME = "The Monday Ledger";
+export const DEFAULT_PROFILE_RINGTONE_URL = defaultRingtoneUrl;
 
 const ringtoneKey = (userId: string) => `ocne_profile_ringtone_${userId}`;
 const ringtoneNameKey = (userId: string) => `ocne_profile_ringtone_name_${userId}`;

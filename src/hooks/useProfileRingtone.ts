@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 import {
+  DEFAULT_PROFILE_RINGTONE_NAME,
+  DEFAULT_PROFILE_RINGTONE_URL,
   getStoredProfileRingtone,
   getStoredProfileRingtoneName,
   PROFILE_RINGTONE_UPDATED_EVENT,
@@ -23,17 +25,21 @@ export function useProfileRingtone(userId?: string | null) {
     };
   };
 
-  const url = useSyncExternalStore(
+  const customUrl = useSyncExternalStore(
     subscribe,
     () => getStoredProfileRingtone(userId),
     () => null,
   );
 
-  const name = useSyncExternalStore(
+  const customName = useSyncExternalStore(
     subscribe,
     () => getStoredProfileRingtoneName(userId),
     () => null,
   );
 
-  return { url, name };
+  return {
+    url: customUrl || DEFAULT_PROFILE_RINGTONE_URL,
+    name: customName || DEFAULT_PROFILE_RINGTONE_NAME,
+    isCustom: Boolean(customUrl),
+  };
 }
