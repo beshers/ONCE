@@ -835,6 +835,52 @@ export default function ChatPage() {
     playCallScreenMusic(true);
   }
 
+  function releaseMediaForPageExit() {
+    stopRingtone();
+    stopCallScreenMusic();
+    if (deviceTestTimerRef.current) {
+      window.clearTimeout(deviceTestTimerRef.current);
+      deviceTestTimerRef.current = null;
+    }
+    if (missedCallTimerRef.current) {
+      window.clearTimeout(missedCallTimerRef.current);
+      missedCallTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // The browser is already navigating away; releasing media is best-effort here.
+      }
+    }
+    mediaRecorderRef.current = null;
+
+    peerConnectionRef.current?.getSenders().forEach((sender) => {
+      sender.track?.stop();
+    });
+    peerConnectionRef.current?.getReceivers().forEach((receiver) => {
+      receiver.track?.stop();
+    });
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+
+    pendingScreenTrackRef.current?.stop();
+    pendingScreenTrackRef.current = null;
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    remoteStreamRef.current?.getTracks().forEach((track) => track.stop());
+    remoteStreamRef.current = null;
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(activeCallSessionKey);
+    }
+  }
+
   function playRingtone(mode: "voice" | "video" | "screen") {
     if (typeof window === "undefined" || ringtoneTimerRef.current) return;
     if (profileRingtone.url) {
@@ -1059,16 +1105,26 @@ export default function ChatPage() {
 
   useEffect(() => {
     return () => {
-      stopRingtone();
-      stopCallScreenMusic();
-      if (deviceTestTimerRef.current) {
-        window.clearTimeout(deviceTestTimerRef.current);
-      }
-      if (missedCallTimerRef.current) {
-        window.clearTimeout(missedCallTimerRef.current);
-      }
+      releaseMediaForPageExit();
       void ringtoneContextRef.current?.close().catch(() => undefined);
     };
+  // releaseMediaForPageExit reads live refs during unmount; rerunning this cleanup effect would be harmful.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handlePageExit = () => {
+      releaseMediaForPageExit();
+    };
+    window.addEventListener("pagehide", handlePageExit);
+    window.addEventListener("beforeunload", handlePageExit);
+    return () => {
+      window.removeEventListener("pagehide", handlePageExit);
+      window.removeEventListener("beforeunload", handlePageExit);
+    };
+  // The unload handler must stay stable and read current refs at navigation time.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
