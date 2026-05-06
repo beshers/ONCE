@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 import { enableWebSockets, trpc } from "@/lib/trpcClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfileRingtone } from "@/hooks/useProfileRingtone";
-import callScreenMusicUrl from "@/Willkommen_bei_O_N_C_E.mp3";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -323,7 +322,10 @@ export default function ChatPage() {
   const ringtoneContextRef = useRef<AudioContext | null>(null);
   const ringtoneTimerRef = useRef<number | null>(null);
   const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
-  const callScreenMusicAudioRef = useRef<HTMLAudioElement | null>(null);
+  const callScreenMusicContextRef = useRef<AudioContext | null>(null);
+  const callScreenMusicGainRef = useRef<GainNode | null>(null);
+  const callScreenMusicTimerRef = useRef<number | null>(null);
+  const callScreenMusicNodesRef = useRef<OscillatorNode[]>([]);
   const missedCallTimerRef = useRef<number | null>(null);
   const callSetupTimerRef = useRef<number | null>(null);
   const isCleaningUpCallRef = useRef(false);
@@ -806,38 +808,130 @@ export default function ChatPage() {
   }
 
   function stopCallScreenMusic() {
-    if (callScreenMusicAudioRef.current) {
-      callScreenMusicAudioRef.current.pause();
-      callScreenMusicAudioRef.current.currentTime = 0;
-      callScreenMusicAudioRef.current = null;
+    if (callScreenMusicTimerRef.current) {
+      window.clearInterval(callScreenMusicTimerRef.current);
+      callScreenMusicTimerRef.current = null;
+    }
+
+    callScreenMusicNodesRef.current.forEach((node) => {
+      try {
+        node.stop();
+        node.disconnect();
+      } catch {
+        // Nodes may already be stopped by their scheduled envelope.
+      }
+    });
+    callScreenMusicNodesRef.current = [];
+
+    const context = callScreenMusicContextRef.current;
+    const gain = callScreenMusicGainRef.current;
+    if (context && gain) {
+      const now = context.currentTime;
+      try {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(gain.gain.value, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.08);
+      } catch {
+        // Context may already be closing.
+      }
+
+      window.setTimeout(() => {
+        void context.close().catch(() => undefined);
+        if (callScreenMusicContextRef.current === context) {
+          callScreenMusicContextRef.current = null;
+          callScreenMusicGainRef.current = null;
+        }
+      }, 100);
     }
     setCallScreenMusicPlaying(false);
   }
 
   function playCallScreenMusic(manual = false) {
     if (typeof window === "undefined") return;
-    const audio = callScreenMusicAudioRef.current || new Audio(callScreenMusicUrl);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.muted = false;
-    audio.volume = manual ? 0.65 : 0.52;
-    callScreenMusicAudioRef.current = audio;
-    void audio.play().then(() => {
+    stopCallScreenMusic();
+
+    const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextConstructor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
+    if (!AudioContextConstructor) {
+      setCallHealthMessage("This browser cannot play the OCNE call music.");
+      return;
+    }
+
+    try {
+      const context = new AudioContextConstructor();
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(manual ? 0.34 : 0.26, context.currentTime);
+      gain.connect(context.destination);
+      if (context.state === "suspended") {
+        void context.resume().catch(() => undefined);
+      }
+
+      callScreenMusicContextRef.current = context;
+      callScreenMusicGainRef.current = gain;
+
+      const playCycle = () => {
+        const activeContext = callScreenMusicContextRef.current;
+        const activeGain = callScreenMusicGainRef.current;
+        if (!activeContext || !activeGain) return;
+
+        callScreenMusicNodesRef.current.forEach((node) => {
+          try {
+            node.stop();
+            node.disconnect();
+          } catch {
+            // Previous oscillator already ended.
+          }
+        });
+        callScreenMusicNodesRef.current = [];
+
+        const pattern = [
+          { frequency: 480, duration: 0.4 },
+          { frequency: 440, duration: 0.4 },
+          { frequency: 0, duration: 1.2 },
+        ];
+        let offset = activeContext.currentTime;
+
+        pattern.forEach(({ frequency, duration }) => {
+          if (frequency === 0) {
+            offset += duration;
+            return;
+          }
+
+          const oscillator = activeContext.createOscillator();
+          const envelope = activeContext.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(frequency, offset);
+          envelope.gain.setValueAtTime(0, offset);
+          envelope.gain.linearRampToValueAtTime(1, offset + 0.02);
+          envelope.gain.setValueAtTime(1, offset + duration - 0.04);
+          envelope.gain.linearRampToValueAtTime(0, offset + duration);
+          oscillator.connect(envelope);
+          envelope.connect(activeGain);
+          oscillator.start(offset);
+          oscillator.stop(offset + duration);
+          callScreenMusicNodesRef.current.push(oscillator);
+          offset += duration;
+        });
+      };
+
+      playCycle();
+      callScreenMusicTimerRef.current = window.setInterval(playCycle, 2000);
       setCallScreenMusicPlaying(true);
       setCallHealthMessage("OCNE call music is playing.");
-    }).catch(() => {
-      callScreenMusicAudioRef.current = null;
+    } catch {
+      callScreenMusicContextRef.current = null;
+      callScreenMusicGainRef.current = null;
       setCallScreenMusicPlaying(false);
       setCallHealthMessage(
         manual
           ? "Browser blocked the OCNE call music. Click Music once more in the call screen."
           : "OCNE call music is ready. Click Music in the call screen to start it.",
       );
-    });
+    }
   }
 
   function toggleCallScreenMusic() {
-    if (callScreenMusicAudioRef.current && !callScreenMusicAudioRef.current.paused) {
+    if (callScreenMusicContextRef.current) {
       stopCallScreenMusic();
       return;
     }
@@ -1151,7 +1245,7 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (directCallActive) {
-      if (!callScreenMusicAudioRef.current) {
+      if (!callScreenMusicContextRef.current) {
         setCallHealthMessage("OCNE call music is ready. Click Music in the call screen if it does not start automatically.");
       }
       return;
@@ -2533,8 +2627,9 @@ export default function ChatPage() {
       setActionError("Enter the user ID you want to call.");
       return;
     }
+    playCallScreenMusic(true);
     try {
-      await startDirectCall(mode, targetUserId);
+      await startDirectCall(mode, targetUserId, false);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The call could not be started for that user ID.");
       await cleanupActiveCall(false);
@@ -2542,10 +2637,11 @@ export default function ChatPage() {
   }
 
   async function startCallFromSearch(userId: string, mode: "voice" | "video") {
+    playCallScreenMusic(true);
     setCallTargetId(userId);
     setCallUserSearch("");
     try {
-      await startDirectCall(mode, userId);
+      await startDirectCall(mode, userId, false);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "The call could not be started for that user.");
       await cleanupActiveCall(false);
