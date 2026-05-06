@@ -459,6 +459,7 @@ export default function EditorPage() {
   const openReviews = (reviews || []).filter((item) => item.review.status === "open").length;
   const latestVersion = versions?.[0]?.version;
   const selectedVersion = (versions || []).find((item) => item.version.id === selectedVersionId) || versions?.[0] || null;
+  const lastCodeSteps = (versions || []).slice(0, 6);
   const collaborationEnabled = Boolean(project?.collaborationMode && project.collaborationMode !== "solo");
   const canShowPreview = ["html", "css", "javascript"].includes(activeFile?.language || "");
   const previewDocument = activeFile?.language === "html"
@@ -878,6 +879,31 @@ export default function EditorPage() {
 
   // Line numbers for the textarea
   const lines = code.split("\n");
+  const stepColors = ["#22d3ee", "#a78bfa", "#34d399", "#f59e0b", "#fb7185", "#60a5fa", "#f472b6"];
+  const stepColorFor = (value: string | number | null | undefined) => {
+    const text = String(value || "unknown");
+    let hash = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = (hash * 31 + text.charCodeAt(index)) % stepColors.length;
+    }
+    return stepColors[Math.abs(hash) % stepColors.length];
+  };
+  const authorNameFor = (step: NonNullable<typeof versions>[number]) =>
+    step.author?.name || step.author?.username || `User ${step.version.userId}`;
+  const codeStepSummary = (before: string, after: string) => {
+    const beforeLines = before.split("\n");
+    const afterLines = after.split("\n");
+    const maxLines = Math.max(beforeLines.length, afterLines.length);
+    let changed = 0;
+    for (let index = 0; index < maxLines; index += 1) {
+      if ((beforeLines[index] || "") !== (afterLines[index] || "")) changed += 1;
+    }
+    const delta = afterLines.length - beforeLines.length;
+    const lineText = changed === 1 ? "1 changed line" : `${changed} changed lines`;
+    if (delta > 0) return `${lineText}, +${delta} lines`;
+    if (delta < 0) return `${lineText}, ${delta} lines`;
+    return lineText;
+  };
   const formatRelativeSaveTime = (date: Date | null) => {
     if (!date) return "";
     const seconds = Math.max(0, Math.floor((saveClockTick - date.getTime()) / 1000));
@@ -1932,6 +1958,51 @@ export default function EditorPage() {
               </p>
             </div>
 
+            <div className="space-y-3 border-b border-white/10 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <GitBranch className="h-4 w-4 text-violet-300" /> Last steps
+                </div>
+                <Button size="sm" variant="ghost" className="h-7 border border-white/10 px-2 text-[11px] text-slate-200 hover:bg-white/10" onClick={() => setActiveTab("versions")}>
+                  See all
+                </Button>
+              </div>
+              {lastCodeSteps.length === 0 ? (
+                <p className="rounded-lg border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-500">
+                  Save this file to create the first step.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {lastCodeSteps.map((step, index) => {
+                    const previous = lastCodeSteps[index + 1]?.version.content || "";
+                    const authorName = authorNameFor(step);
+                    const authorColor = stepColorFor(step.author?.id || step.version.userId);
+                    return (
+                      <button
+                        key={step.version.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedVersionId(step.version.id);
+                          setActiveTab("versions");
+                        }}
+                        className="w-full rounded-lg border border-white/10 bg-black/20 p-2 text-left transition hover:border-violet-400/30 hover:bg-violet-500/10"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: authorColor, boxShadow: `0 0 10px ${authorColor}` }} />
+                          <span className="min-w-0 flex-1 truncate text-xs font-semibold text-white">v{step.version.versionNumber}</span>
+                          <span className="text-[10px] text-slate-500">{new Date(step.version.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                        <div className="mt-1 truncate text-[11px] text-slate-300">{step.version.commitMessage || "Save step"}</div>
+                        <div className="mt-1 text-[10px] text-slate-500">
+                          {authorName} - {codeStepSummary(previous, step.version.content || "")}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
               <div className="space-y-2">
                 <div className="text-xs font-semibold text-white">Participants</div>
@@ -2199,7 +2270,12 @@ export default function EditorPage() {
                         No version history yet. Save your file to create snapshots.
                       </p>
                     )}
-                    {(versions || []).map(({ version, author }) => (
+                    {(versions || []).map((step, index) => {
+                      const { version, author } = step;
+                      const previous = versions?.[index + 1]?.version.content || "";
+                      const authorName = authorNameFor(step);
+                      const authorColor = stepColorFor(author?.id || version.userId);
+                      return (
                       <button
                         key={version.id}
                         type="button"
@@ -2211,7 +2287,7 @@ export default function EditorPage() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-[10px] font-bold text-white">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-bold text-slate-950" style={{ backgroundColor: authorColor }}>
                             v{version.versionNumber}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -2219,12 +2295,16 @@ export default function EditorPage() {
                               {version.commitMessage || `Version ${version.versionNumber}`}
                             </p>
                             <p className="mt-1 text-[10px] text-slate-600">
-                              Saved by {author?.name || author?.username || version.userId} at {new Date(version.createdAt).toLocaleString()}
+                              Saved by {authorName} at {new Date(version.createdAt).toLocaleString()}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              {codeStepSummary(previous, version.content || "")}
                             </p>
                           </div>
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2236,8 +2316,17 @@ export default function EditorPage() {
                           <div className="truncate text-sm font-semibold text-white">
                             Diff: current code vs v{selectedVersion.version.versionNumber}
                           </div>
-                          <div className="mt-1 text-[10px] text-slate-500">
-                            {selectedVersion.version.commitMessage || "Snapshot"} by {selectedVersion.author?.name || selectedVersion.author?.username || selectedVersion.version.userId}
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-slate-300"
+                            >
+                              <span
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: stepColorFor(selectedVersion.author?.id || selectedVersion.version.userId) }}
+                              />
+                              {authorNameFor(selectedVersion)}
+                            </span>
+                            <span>{selectedVersion.version.commitMessage || "Snapshot"}</span>
                           </div>
                         </div>
                         <Button
