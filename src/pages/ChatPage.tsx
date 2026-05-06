@@ -815,22 +815,25 @@ export default function ChatPage() {
   }
 
   function playCallScreenMusic(manual = false) {
-    if (typeof window === "undefined" || callScreenMusicAudioRef.current) return;
-    const audio = new Audio(callScreenMusicUrl);
+    if (typeof window === "undefined") return;
+    const audio = callScreenMusicAudioRef.current || new Audio(callScreenMusicUrl);
     audio.loop = true;
-    audio.volume = manual ? 0.55 : 0.38;
+    audio.preload = "auto";
+    audio.muted = false;
+    audio.volume = manual ? 0.65 : 0.52;
     callScreenMusicAudioRef.current = audio;
     void audio.play().then(() => {
       setCallScreenMusicPlaying(true);
+      setCallHealthMessage("OCNE call music is playing.");
     }).catch(() => {
       callScreenMusicAudioRef.current = null;
       setCallScreenMusicPlaying(false);
-      setCallHealthMessage("Browser blocked the OCNE call-screen music until the page receives a user click.");
+      setCallHealthMessage("Browser blocked the OCNE call music. Press the Music button in the call screen to start it.");
     });
   }
 
   function toggleCallScreenMusic() {
-    if (callScreenMusicAudioRef.current) {
+    if (callScreenMusicAudioRef.current && !callScreenMusicAudioRef.current.paused) {
       stopCallScreenMusic();
       return;
     }
@@ -1983,6 +1986,7 @@ export default function ChatPage() {
     setCallState("outgoing");
     setIsCallOnHold(false);
     lastRemoteHeartbeatRef.current = null;
+    playCallScreenMusic(true);
 
     try {
       const stream = await ensureLocalStream(mode);
@@ -2031,6 +2035,7 @@ export default function ChatPage() {
       setCallState("connecting");
       setIsCallOnHold(false);
       lastRemoteHeartbeatRef.current = Date.now();
+      playCallScreenMusic(true);
 
       const stream = await ensureLocalStream(mediaMode);
       const pc = createPeerConnection(incomingCall.callId, directRecipientId);
