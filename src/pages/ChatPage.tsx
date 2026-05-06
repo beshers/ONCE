@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { UserAvatar } from "@/components/UserAvatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -2834,12 +2834,7 @@ export default function ChatPage() {
       {callState === "incoming" && incomingCall && (
         <div className="fixed inset-x-3 top-3 z-50 mx-auto max-w-xl rounded-3xl border border-amber-400/30 bg-[#111827] p-4 shadow-2xl shadow-black/40">
           <div className="flex items-start gap-3">
-            <Avatar className="h-12 w-12 shrink-0 border border-amber-400/30">
-              <AvatarImage src={currentDirectUser?.avatar || undefined} />
-              <AvatarFallback className="bg-amber-400 text-slate-950">
-                {incomingCallerName.charAt(0)}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar user={currentDirectUser} fallback={incomingCallerName} className="h-12 w-12 shrink-0 border border-amber-400/30" fallbackClassName="bg-amber-400 text-slate-950" />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-white">
                 {incomingCall.mode === "video" ? <Video className="h-4 w-4 text-amber-300" /> : <Phone className="h-4 w-4 text-amber-300" />}
@@ -3176,12 +3171,7 @@ export default function ChatPage() {
                           : "border-transparent text-slate-300 hover:bg-white/[0.05] hover:text-white"
                       }`}
                     >
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={thread.avatar || undefined} />
-                        <AvatarFallback className="bg-gradient-to-br from-violet-500 to-cyan-600 text-[10px] text-white">
-                          {(thread.label || "U").charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar user={{ id: thread.id, name: thread.label, avatar: thread.avatar }} className="h-8 w-8" fallbackClassName="bg-gradient-to-br from-violet-500 to-cyan-600 text-[10px] text-white" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <div className="truncate text-sm font-medium">{thread.label}</div>
@@ -3250,12 +3240,7 @@ export default function ChatPage() {
                   const active = participant?.id === speakerId;
                   return (
                     <div key={participant?.id} className={`flex items-center gap-3 rounded-xl px-3 py-2 ${active ? "bg-emerald-500/8" : "bg-white/[0.02]"}`}>
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={participant?.avatar || undefined} />
-                        <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] text-white">
-                          {(participant?.name || participant?.username || "U").charAt(0)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <UserAvatar user={participant} className="h-8 w-8" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] text-white" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-slate-200">
                           {participant?.name || participant?.username}
@@ -3278,12 +3263,7 @@ export default function ChatPage() {
           <div className="sticky top-0 z-10 border-b border-white/10 bg-[#0b0f17]/96 px-3 py-3 shadow-lg shadow-black/20 backdrop-blur sm:px-5 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
-                <Avatar className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12">
-                  <AvatarImage src={currentDirectUser?.avatar || activeRoomCreator?.avatar || undefined} />
-                  <AvatarFallback className="bg-[#1d9bf0] text-white">
-                    {(roomName || "R").charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
+                <UserAvatar user={currentDirectUser || activeRoomCreator} fallback={roomName} className="h-11 w-11 shrink-0 border border-white/10 sm:h-12 sm:w-12" fallbackClassName="bg-[#1d9bf0] text-white" />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-white sm:text-xl">{roomName}</h2>
@@ -3648,12 +3628,7 @@ export default function ChatPage() {
                       const isSpeaker = entry.sender?.id === speakerId;
                       return (
                         <div key={entry.message.id} className={`flex gap-3 ${isMe ? "flex-row-reverse" : ""}`}>
-                          <Avatar className="h-10 w-10 flex-shrink-0 border border-white/10">
-                            <AvatarImage src={entry.sender?.avatar || undefined} />
-                            <AvatarFallback className="bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] text-white">
-                              {(entry.sender?.name || entry.sender?.username || "U").charAt(0)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <UserAvatar user={entry.sender} className="h-10 w-10 flex-shrink-0 border border-white/10" fallbackClassName="bg-gradient-to-br from-cyan-500 to-violet-600 text-[10px] text-white" />
                           <div className="max-w-[min(82%,42rem)]">
                             <div className={`mb-1 flex items-center gap-2 text-[11px] text-slate-500 ${isMe ? "justify-end" : ""}`}>
                               {!isMe && <span>{entry.sender?.name || entry.sender?.username || "User"}</span>}
@@ -4437,7 +4412,6 @@ export default function ChatPage() {
     </div>
   );
 }
-
 
 
 
