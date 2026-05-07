@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useRef, useState, useEffect, type ReactElement } from "react";
 import { useParams, useNavigate } from "react-router";
-import { DiffEditor } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import { trpc } from "@/lib/trpcClient";
 import { Card } from "@/components/ui/card";
@@ -11,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import EmbeddedTerminal from "@/components/EmbeddedTerminal";
-import CollaborativeCodeEditor from "@/components/CollaborativeCodeEditor";
 import DeviceEditorBridge from "@/components/DeviceEditorBridge";
 import { toast } from "sonner";
 import {
@@ -238,6 +236,8 @@ const projectVisibilityOptions: Array<{ value: ProjectVisibility; label: string;
   { value: "private", label: "Private", help: "Only you and direct collaborators can open the project." },
 ];
 const LocalAgentPage = lazy(() => import("@/pages/LocalAgentPage"));
+const CollaborativeCodeEditor = lazy(() => import("@/components/CollaborativeCodeEditor"));
+const DiffEditor = lazy(() => import("@monaco-editor/react").then((module) => ({ default: module.DiffEditor })));
 const AGENT_COMMAND_KEY = "ocne-agent-command";
 const AGENT_AUTOCONNECT_KEY = "ocne-agent-autoconnect-requested";
 const DATABASE_AUTOSAVE_DELAY_MS = 1500;
@@ -1909,21 +1909,29 @@ export default function EditorPage() {
               {/* Code area */}
               {activeFile ? (
                 <div className="min-w-0 flex-1">
-                  <CollaborativeCodeEditor
-                    projectId={projectId!}
-                    fileId={activeFile.id}
-                    fileName={activeFile.name}
-                    language={activeFile.language || "plaintext"}
-                    value={code}
-                    onChange={setCode}
-                    collaborationEnabled={collaborationEnabled}
-                    fontSize={editorFontSize}
-                    minimapEnabled={minimapEnabled}
-                    wordWrapEnabled={wordWrapEnabled}
-                    onEditorReady={handleEditorReady}
-                    onCursorLineChange={setReviewLineStart}
-                    onConnectionStatusChange={setCollaborationStatus}
-                  />
+                  <Suspense
+                    fallback={
+                      <div className="flex h-full min-h-[420px] items-center justify-center bg-[#080b12] text-sm text-slate-500">
+                        Loading editor engine...
+                      </div>
+                    }
+                  >
+                    <CollaborativeCodeEditor
+                      projectId={projectId!}
+                      fileId={activeFile.id}
+                      fileName={activeFile.name}
+                      language={activeFile.language || "plaintext"}
+                      value={code}
+                      onChange={setCode}
+                      collaborationEnabled={collaborationEnabled}
+                      fontSize={editorFontSize}
+                      minimapEnabled={minimapEnabled}
+                      wordWrapEnabled={wordWrapEnabled}
+                      onEditorReady={handleEditorReady}
+                      onCursorLineChange={setReviewLineStart}
+                      onConnectionStatusChange={setCollaborationStatus}
+                    />
+                  </Suspense>
                 </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center p-8 text-center text-slate-600">
@@ -2397,21 +2405,29 @@ export default function EditorPage() {
                         </Button>
                       </div>
                       <div className="h-[560px]">
-                        <DiffEditor
-                          height="100%"
-                          language={activeFile.language || "plaintext"}
-                          original={selectedVersion.version.content || ""}
-                          modified={code}
-                          theme="vs-dark"
-                          options={{
-                            automaticLayout: true,
-                            readOnly: true,
-                            renderSideBySide: true,
-                            minimap: { enabled: false },
-                            fontSize: 13,
-                            scrollBeyondLastLine: false,
-                          }}
-                        />
+                        <Suspense
+                          fallback={
+                            <div className="flex h-full items-center justify-center bg-[#080b12] text-sm text-slate-500">
+                              Loading diff viewer...
+                            </div>
+                          }
+                        >
+                          <DiffEditor
+                            height="100%"
+                            language={activeFile.language || "plaintext"}
+                            original={selectedVersion.version.content || ""}
+                            modified={code}
+                            theme="vs-dark"
+                            options={{
+                              automaticLayout: true,
+                              readOnly: true,
+                              renderSideBySide: true,
+                              minimap: { enabled: false },
+                              fontSize: 13,
+                              scrollBeyondLastLine: false,
+                            }}
+                          />
+                        </Suspense>
                       </div>
                     </>
                   ) : (

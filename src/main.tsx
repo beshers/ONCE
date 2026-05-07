@@ -34,7 +34,12 @@ async function clearLegacyBrowserCaches() {
 
 if ('serviceWorker' in navigator || 'caches' in window) {
   window.addEventListener('load', () => {
-    clearLegacyBrowserCaches().catch(() => undefined);
+    const cleanup = () => clearLegacyBrowserCaches().catch(() => undefined);
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(cleanup, { timeout: 5000 });
+    } else {
+      globalThis.setTimeout(cleanup, 2500);
+    }
   });
 }
 
