@@ -25,6 +25,11 @@ const savedItems = [
     text: "Used by the installed OCNE app for login state, cache files, app settings, and connecting to the same online API as the website.",
     icon: HardDrive,
   },
+  {
+    title: "Desktop agent data",
+    text: "Used only if you install and start the local agent for terminal, device, or local file features.",
+    icon: HardDrive,
+  },
 ];
 
 export default function CookiesPage() {
@@ -52,7 +57,7 @@ export default function CookiesPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 p-5 md:grid-cols-4">
+          <div className="grid gap-4 p-5 md:grid-cols-5">
             {savedItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -97,6 +102,18 @@ export default function CookiesPage() {
                 The Windows program installs OCNE on your computer and stores the app interface
                 locally. When you sign in or use online features, it connects to the OCNE API hosted
                 on Render. The API reads and writes the same Aiven MySQL database used by the website.
+              </p>
+            </Card>
+            <Card className="border-white/10 bg-[#0b1220] p-5 shadow-none md:col-span-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <HardDrive className="h-4 w-4 text-amber-300" />
+                How the other programs work
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-400">
+                The Windows and macOS ZIP apps are alternative app packages. The desktop agent is a
+                local helper for terminal, device, and file features. These programs may store local
+                cache, settings, login state, and connection settings on your computer, and they use
+                OCNE online services only for features that need the API or database.
               </p>
             </Card>
           </div>

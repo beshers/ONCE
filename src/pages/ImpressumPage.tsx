@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { ArrowLeft, Building2, FileText, Mail, MapPin, Scale, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Scale, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,7 @@ export default function ImpressumPage() {
           </h1>
           <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
             OCNE ist ein studentisches Softwareprojekt und wird nicht von einer GmbH, UG oder
-            anderen Gesellschaft betrieben. Die Anschrift muss vor dem öffentlichen Betrieb durch
-            die echte c/o-Adresse eines Impressum-Adressdienstes ersetzt werden.
+            anderen Gesellschaft betrieben. Kontakt ist über die unten genannte E-Mail-Adresse möglich.
           </p>
         </section>
 
@@ -47,10 +46,6 @@ export default function ImpressumPage() {
                 <p className="font-semibold text-amber-50">Studentisches Softwareprojekt</p>
                 <p className="mt-2">Busher Smakie</p>
                 <p>OCNE - Online Code Network Editor</p>
-                <p>c/o [Impressum address service]</p>
-                <p>[Street and house number]</p>
-                <p>[ZIP City]</p>
-                <p>Germany</p>
               </div>
               <p>
                 OCNE wird derzeit als studentisches Projekt einer Privatperson betrieben. Es gibt
@@ -77,13 +72,6 @@ export default function ImpressumPage() {
                   <a className="text-cyan-200 hover:text-cyan-100" href="mailto:OCNE@outlook.com">
                     OCNE@outlook.com
                   </a>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.035] p-4">
-                  <div className="mb-1 flex items-center gap-2 font-semibold text-white">
-                    <MapPin className="h-4 w-4 text-cyan-200" />
-                    Anschrift
-                  </div>
-                  <p>Siehe Diensteanbieter. Die c/o-Adresse muss durch den echten Impressum-Adressdienst ersetzt werden.</p>
                 </div>
               </div>
             </CardContent>
@@ -125,9 +113,10 @@ export default function ImpressumPage() {
               <div>
                 <p className="font-semibold text-amber-50">Wichtiger Produktionshinweis</p>
                 <p className="mt-1">
-                  Diese Seite enthält noch eine c/o-Adressplatzhalterung. Vor dem öffentlichen
-                  Betrieb muss hier die echte ladungsfähige Anschrift des gewählten
-                  Impressum-Adressdienstes eingesetzt werden.
+                  Diese Seite nennt nur Name und E-Mail-Adresse. Je nach Land, Zielgruppe und
+                  öffentlichem Betrieb können zusätzliche Pflichtangaben, insbesondere eine
+                  ladungsfähige Anschrift, erforderlich sein. Das sollte vor einem öffentlichen
+                  Launch rechtlich geprüft werden.
                 </p>
               </div>
             </CardContent>
