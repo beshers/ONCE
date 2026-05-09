@@ -15,13 +15,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
-const WINDOWS_AGENT_DOWNLOAD = "/downloads/OCNE-Desktop-Agent-Setup.exe";
-const WINDOWS_APP_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows.zip";
-const WINDOWS_APP_LITE_DOWNLOAD = "/downloads/OCNE-Desktop-App-Windows-Lite.zip";
-const MAC_APP_ARM64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Apple-Silicon.zip";
-const MAC_APP_X64_DOWNLOAD = "/downloads/OCNE-Desktop-App-macOS-Intel.zip";
+const DOWNLOAD_BASE_URL = (import.meta.env.VITE_DOWNLOAD_BASE_URL || "/downloads").replace(/\/$/, "");
+const downloadUrl = (fileName: string) => `${DOWNLOAD_BASE_URL}/${fileName}`;
+
+const WINDOWS_AGENT_DOWNLOAD = downloadUrl("OCNE-Desktop-Agent-Setup.exe");
+const WINDOWS_PROGRAM_DOWNLOAD = downloadUrl("OCNE-Windows-Program-Setup.exe");
+const WINDOWS_APP_DOWNLOAD = downloadUrl("OCNE-Desktop-App-Windows.zip");
+const WINDOWS_APP_LITE_DOWNLOAD = downloadUrl("OCNE-Desktop-App-Windows-Lite.zip");
+const MAC_APP_ARM64_DOWNLOAD = downloadUrl("OCNE-Desktop-App-macOS-Apple-Silicon.zip");
+const MAC_APP_X64_DOWNLOAD = downloadUrl("OCNE-Desktop-App-macOS-Intel.zip");
 const WINDOWS_AGENT_SHA256 =
   "E996B55D4B8E0FC1438E6632ECF22EB6563A0109688F43B76A12080AB9EF7E99";
+const WINDOWS_PROGRAM_SHA256 =
+  "296E4E0134C077CDE1B4A2F706DE24A3CD1348C94A17D59F85D4B8E8A13151D4";
 const WINDOWS_APP_SHA256 =
   "163B8DE55B048A7279B32CAA6183F70F10BFD1073160BED7BA956C58006B0383";
 const WINDOWS_APP_LITE_SHA256 =
@@ -32,6 +38,16 @@ const MAC_APP_X64_SHA256 =
   "F2F1C5DAC2A61C68E3ECBE9E688181B435C2A5511E6C773B43949B88D4CD9CA6";
 
 const downloads = [
+  {
+    title: "OCNE Windows Program",
+    description: "Installable OCNE app that bundles the same interface as the website and connects to the online OCNE API/database. Build this with VITE_API_URL before publishing.",
+    href: WINDOWS_PROGRAM_DOWNLOAD,
+    fileType: "EXE",
+    meta: "Windows program, online database",
+    badge: "Native shell",
+    icon: HardDriveDownload,
+    checksum: WINDOWS_PROGRAM_SHA256,
+  },
   {
     title: "OCNE Desktop App for Windows Lite",
     description: "Smaller Windows desktop app. Best choice if antivirus blocks the standalone ZIP. Requires Microsoft .NET 8 Desktop Runtime.",
@@ -85,7 +101,7 @@ const downloads = [
   {
     title: "Quick Start Guide",
     description: "A short setup checklist for signing in, opening chat, running terminal sessions, and installing the agent.",
-    href: "/downloads/OCNE-quick-start.txt",
+    href: downloadUrl("OCNE-quick-start.txt"),
     fileType: "TXT",
     meta: "Setup notes",
     badge: "Guide",
@@ -94,7 +110,7 @@ const downloads = [
   {
     title: "Local Agent Checklist",
     description: "Use this when terminal, desktop agent, or localhost features need to be enabled on a new machine.",
-    href: "/downloads/OCNE-local-agent-checklist.txt",
+    href: downloadUrl("OCNE-local-agent-checklist.txt"),
     fileType: "TXT",
     meta: "Agent setup",
     badge: "Checklist",
@@ -103,7 +119,7 @@ const downloads = [
   {
     title: "Troubleshooting Notes",
     description: "Common fixes for browser permissions, blocked downloads, stale sessions, and connection issues.",
-    href: "/downloads/OCNE-troubleshooting.txt",
+    href: downloadUrl("OCNE-troubleshooting.txt"),
     fileType: "TXT",
     meta: "Help file",
     badge: "Support",

@@ -3,3 +3,6 @@ dist
 .git
 *.swp
 *.log
+public/downloads/*.exe
+public/downloads/*.zip
+!public/downloads/OCNE-Windows-Program-Setup.exe
