@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpcClient";
-import { Bot, Code2, HardDrive, Radio, Users } from "lucide-react";
+import { Bot, Code2, Cookie, HardDrive, Radio, ShieldCheck, Users } from "lucide-react";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -260,9 +261,34 @@ export default function Login() {
                 )}
               </button>
             </div>
+            <div className="mt-5 grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2">
+              <Button asChild variant="outline" className="border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/10 hover:text-white">
+                <Link to="/cookies">
+                  <Cookie className="mr-2 h-4 w-4" />
+                  Read Cookies
+                </Link>
+              </Button>
+              <Button asChild variant="outline" className="border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/10 hover:text-white">
+                <Link to="/datenschutz">
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Read Datenschutz
+                </Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
+      <footer className="mx-auto mt-6 flex max-w-6xl flex-wrap justify-center gap-4 border-t border-white/10 pt-5 text-xs text-slate-500">
+        <Link to="/cookies" className="transition hover:text-cyan-200">
+          Cookies
+        </Link>
+        <Link to="/datenschutz" className="transition hover:text-cyan-200">
+          Datenschutz
+        </Link>
+        <Link to="/impressum" className="transition hover:text-cyan-200">
+          Impressum
+        </Link>
+      </footer>
     </div>
   );
 }

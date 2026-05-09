@@ -9,7 +9,7 @@ import {
   Globe,
   Trophy, Palette, Zap, GitBranch, Bookmark,
   Building2, Plug, FileText, Radio, Package, Rocket,
-  Bug, Key, Flame, Download, UserRound
+  Bug, Key, Flame, Download, UserRound, Scale, ShieldCheck, Cookie
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -57,6 +57,12 @@ const navSections = [
   { title: "Community", items: navItems.slice(6, 10) },
   { title: "Workspace", items: navItems.slice(10, -2) },
   { title: "Account", items: navItems.slice(-2) },
+];
+
+const legalLinks = [
+  { icon: Cookie, label: "Cookies", path: "/cookies" },
+  { icon: ShieldCheck, label: "Datenschutz", path: "/datenschutz" },
+  { icon: Scale, label: "Impressum", path: "/impressum" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -146,6 +152,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {section.items.map((item) => renderNavItem(item))}
             </div>
           ))}
+          <div className="space-y-1 border-t border-white/5 pt-3">
+            <div className="text-[10px] uppercase text-slate-600 font-semibold px-3 py-2 tracking-wider">
+              {!collapsed && "Legal"}
+            </div>
+            {legalLinks.map((item) => renderNavItem(item))}
+          </div>
           <button
             onClick={() => logout()}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-all w-full ${
@@ -201,6 +213,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     {unreadCount}
                   </Badge>
                 )}
+              </Link>
+            ))}
+            <div className="my-2 border-t border-white/10" />
+            {legalLinks.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                  location.pathname === item.path
+                    ? "bg-cyan-500/10 text-cyan-400"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                }`}
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="text-sm font-medium">{item.label}</span>
               </Link>
             ))}
             <button

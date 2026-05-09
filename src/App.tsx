@@ -4,7 +4,6 @@ import { useAuth } from "@/hooks/useAuth"
 import Login from "./pages/Login"
 import NotFound from "./pages/NotFound"
 import Layout from "./components/Layout"
-import PwaInstallButton from "./components/PwaInstallButton"
 
 const Dashboard = lazy(() => import("./pages/Dashboard"))
 const ProjectsPage = lazy(() => import("./pages/ProjectsPage"))
@@ -35,6 +34,11 @@ const ActivityHeatmapPage = lazy(() => import("./pages/ActivityHeatmapPage"))
 const ThemeSettingsPage = lazy(() => import("./pages/ThemeSettingsPage"))
 const LocalAgentPage = lazy(() => import("./pages/LocalAgentPage"))
 const ProfilePage = lazy(() => import("./pages/ProfilePage"))
+const DatenschutzPage = lazy(() => import("./pages/DatenschutzPage"))
+const ImpressumPage = lazy(() => import("./pages/ImpressumPage"))
+const CookiesPage = lazy(() => import("./pages/CookiesPage"))
+const PwaInstallButton = lazy(() => import("./components/PwaInstallButton"))
+const CookieConsent = lazy(() => import("./components/CookieConsent"))
 
 function LoadingScreen() {
   return (
@@ -102,11 +106,17 @@ function AuthWrapper({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <>
-      <PwaInstallButton />
+      <Suspense fallback={null}>
+        <PwaInstallButton />
+        <CookieConsent />
+      </Suspense>
       <ReloadRecoveryBoundary>
         <Suspense fallback={<LoadingScreen />}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/cookies" element={<CookiesPage />} />
+            <Route path="/datenschutz" element={<DatenschutzPage />} />
+            <Route path="/impressum" element={<ImpressumPage />} />
             <Route path="/" element={<AuthWrapper><Dashboard /></AuthWrapper>} />
             <Route path="/projects" element={<AuthWrapper><ProjectsPage /></AuthWrapper>} />
             <Route path="/projects/:id" element={<AuthWrapper><EditorPage /></AuthWrapper>} />
