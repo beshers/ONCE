@@ -22,6 +22,10 @@ const dataGroups = [
     title: "Lokale Einstellungen",
     text: "Theme, Sidebar-Breite, Profilbild-/Klingelton-Auswahl, Call-Berechtigungen, PWA-/Cache-Status und lokale Agent-Verbindungsdaten, wenn du sie speicherst.",
   },
+  {
+    title: "Windows-Programm",
+    text: "Das installierbare Windows-Programm enthält die OCNE-Oberfläche lokal auf deinem Computer und verbindet sich online mit der OCNE-API und derselben Datenbank wie die Website.",
+  },
 ];
 
 const rights = [
@@ -184,16 +188,47 @@ export default function DatenschutzPage() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm leading-6 text-slate-300">
                 <p>
-                  Personenbezogene Daten können an technische Dienstleister weitergegeben werden, die
-                  OCNE hosten, Datenbanken betreiben, E-Mails versenden, Fehler analysieren oder
-                  Sicherheitsfunktionen bereitstellen. Solche Dienstleister sollen nur nach Weisung
-                  und mit geeigneten Vereinbarungen eingesetzt werden.
+                  OCNE nutzt technische Dienstleister, damit Website, API, Datenbank, Quellcode und
+                  Downloads funktionieren. Dazu gehören derzeit insbesondere Render für Hosting/API,
+                  Aiven für die MySQL-Datenbank und GitHub für Quellcode, Deployment-Anbindung und
+                  öffentliche Projektdateien.
                 </p>
                 <p>
-                  Eine Übermittlung in Länder außerhalb der EU/des EWR sollte nur erfolgen, wenn ein
-                  Angemessenheitsbeschluss, geeignete Garantien oder eine andere zulässige Grundlage
-                  besteht. Wenn OCNE externe Dienste einbindet, müssen diese Anbieter hier konkret
-                  benannt werden.
+                  Diese Anbieter können technische Daten wie IP-Adresse, Anfragezeitpunkt,
+                  Header-Daten, Logdaten, Deployments, Downloads oder Datenbankverbindungen
+                  verarbeiten, soweit dies für Betrieb, Sicherheit, Fehleranalyse und Bereitstellung
+                  von OCNE erforderlich ist.
+                </p>
+                <p>
+                  Eine Übermittlung in Länder außerhalb der EU/des EWR kann abhängig vom jeweiligen
+                  Anbieter und dessen Infrastruktur stattfinden. Für den öffentlichen Betrieb sollten
+                  die aktuellen Datenschutzinformationen und Auftragsverarbeitungsverträge der
+                  Anbieter geprüft und hinterlegt werden.
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-white/10 bg-[#0d1720]/90">
+              <CardHeader>
+                <CardTitle className="text-white">Windows-Programm und lokale Nutzung</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm leading-6 text-slate-300">
+                <p>
+                  Das OCNE Windows-Programm ist eine installierbare Desktop-App. Es zeigt die gleiche
+                  Oberfläche wie die Website, lädt aber nicht einfach die Website in einem Browser,
+                  sondern bringt die Oberfläche als Programmdateien mit.
+                </p>
+                <p>
+                  Für Anmeldung, Projekte, Chat, Profil, Downloads und andere Online-Funktionen
+                  verbindet sich das Programm mit der OCNE-API auf Render. Die Daten werden dadurch
+                  in derselben Online-Datenbank bei Aiven verarbeitet wie bei der Website.
+                </p>
+                <p>
+                  Auf deinem Computer können zusätzlich notwendige lokale Daten gespeichert werden,
+                  zum Beispiel Cache-Dateien, Login-Status, Fenster-/App-Einstellungen und lokale
+                  Browser-Speicherwerte der Desktop-App. Diese lokalen Daten dienen der Funktion des
+                  Programms und können über die App-/Browserdaten oder durch Deinstallation gelöscht
+                  werden.
                 </p>
               </CardContent>
             </Card>

@@ -20,6 +20,11 @@ const savedItems = [
     text: "Used for profiles, projects, chat, calls, notifications, downloads, and local agent settings when you enable them.",
     icon: Database,
   },
+  {
+    title: "Windows program data",
+    text: "Used by the installed OCNE app for login state, cache files, app settings, and connecting to the same online API as the website.",
+    icon: HardDrive,
+  },
 ];
 
 export default function CookiesPage() {
@@ -47,7 +52,7 @@ export default function CookiesPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 p-5 md:grid-cols-3">
+          <div className="grid gap-4 p-5 md:grid-cols-4">
             {savedItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -81,6 +86,17 @@ export default function CookiesPage() {
                 Account, project, chat, profile, and collaboration information is saved in the OCNE
                 online database through the API. The Windows program connects to the same API, so it
                 uses the same account data as the website.
+              </p>
+            </Card>
+            <Card className="border-white/10 bg-[#0b1220] p-5 shadow-none md:col-span-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                <HardDrive className="h-4 w-4 text-cyan-300" />
+                How the Windows program works
+              </div>
+              <p className="mt-3 text-sm leading-6 text-slate-400">
+                The Windows program installs OCNE on your computer and stores the app interface
+                locally. When you sign in or use online features, it connects to the OCNE API hosted
+                on Render. The API reads and writes the same Aiven MySQL database used by the website.
               </p>
             </Card>
           </div>
